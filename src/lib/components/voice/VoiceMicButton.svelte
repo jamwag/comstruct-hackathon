@@ -1,7 +1,8 @@
 <script lang="ts">
 	import AudioVisualizer from './AudioVisualizer.svelte';
 	import TranscriptionDisplay from './TranscriptionDisplay.svelte';
-	import ProductRecommendations from './ProductRecommendations.svelte';
+	import ProductRecommendations, { type IndexedProduct } from './ProductRecommendations.svelte';
+	import { cart } from '$lib/stores/cart';
 
 	// Type definitions for the voice processing API response
 	interface ProductMatch {
@@ -22,19 +23,76 @@
 		products: ProductMatch[];
 	}
 
-	interface ProcessedVoiceResult {
+	// Context product for tracking displayed products
+	interface ContextProduct {
+		index: number;
+		productId: string;
+		productName: string;
+		sku: string;
+		pricePerUnit: number;
+		unit: string;
+	}
+
+	// Response types from the API
+	interface NewSearchResult {
 		transcription: string;
+		intentType: 'new_search';
 		intent: {
 			items: Array<{
 				description: string;
 				quantity: number;
 				confidence: number;
 			}>;
-			clarificationNeeded: string | null;
 		};
 		recommendations: Recommendation[];
 		noMatchMessage: string | null;
 	}
+
+	interface SelectProductResult {
+		transcription: string;
+		intentType: 'select_product';
+		addedToCart: {
+			productId: string;
+			productName: string;
+			sku: string;
+			pricePerUnit: number;
+			unit: string;
+			quantity: number;
+			confirmationMessage: string;
+		};
+	}
+
+	interface AddAllResult {
+		transcription: string;
+		intentType: 'add_all';
+		addedProducts: Array<{
+			productId: string;
+			productName: string;
+			sku: string;
+			pricePerUnit: number;
+			unit: string;
+			quantity: number;
+		}>;
+		confirmationMessage: string;
+	}
+
+	interface ClearResult {
+		transcription: string;
+		intentType: 'clear';
+	}
+
+	interface ErrorResult {
+		transcription: string;
+		intentType: 'error';
+		errorMessage: string;
+	}
+
+	type ProcessedVoiceResult =
+		| NewSearchResult
+		| SelectProductResult
+		| AddAllResult
+		| ClearResult
+		| ErrorResult;
 
 	type VoiceState = 'idle' | 'listening' | 'processing' | 'results' | 'error';
 
@@ -51,6 +109,12 @@
 	let recommendations = $state<Recommendation[]>([]);
 	let errorMessage = $state('');
 	let noMatchMessage = $state<string | null>(null);
+	let feedbackMessage = $state<string | null>(null);
+
+	// Conversation context - tracks displayed products for follow-up commands
+	let conversationContext = $state<{
+		products: ContextProduct[];
+	} | null>(null);
 
 	// Audio recording
 	let mediaStream = $state<MediaStream | null>(null);
@@ -64,6 +128,22 @@
 	const isProcessing = $derived(state === 'processing');
 	const showResults = $derived(state === 'results' && recommendations.length > 0);
 	const canInteract = $derived(!disabled && projectId !== null);
+
+	// Handler for when products are indexed by ProductRecommendations
+	function handleProductsIndexed(indexed: IndexedProduct[]) {
+		if (indexed.length > 0) {
+			conversationContext = {
+				products: indexed.map((p) => ({
+					index: p.index,
+					productId: p.productId,
+					productName: p.productName,
+					sku: p.sku,
+					pricePerUnit: p.pricePerUnit,
+					unit: p.unit
+				}))
+			};
+		}
+	}
 
 	async function startRecording() {
 		if (!canInteract) {
@@ -140,15 +220,21 @@
 		}
 
 		state = 'processing';
+		feedbackMessage = null;
 
 		try {
 			// Create audio blob
 			const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
 
-			// Send to server for processing
+			// Send to server for processing with conversation context
 			const formData = new FormData();
 			formData.append('audio', audioBlob, 'recording.webm');
 			formData.append('projectId', projectId!);
+
+			// Include conversation context if we have products displayed
+			if (conversationContext && conversationContext.products.length > 0) {
+				formData.append('conversationContext', JSON.stringify(conversationContext));
+			}
 
 			const response = await fetch('/api/voice/process', {
 				method: 'POST',
@@ -162,14 +248,104 @@
 
 			const result: ProcessedVoiceResult = await response.json();
 
-			transcription = result.transcription;
-			recommendations = result.recommendations;
-			noMatchMessage = result.noMatchMessage;
-			state = 'results';
+			// Handle different intent types
+			switch (result.intentType) {
+				case 'new_search': {
+					const searchResult = result as NewSearchResult;
+					transcription = searchResult.transcription;
+					recommendations = searchResult.recommendations;
+					noMatchMessage = searchResult.noMatchMessage;
+					state = 'results';
 
-			// If no matches found, play TTS feedback
-			if (noMatchMessage) {
-				playTTSFeedback(noMatchMessage);
+					// Clear previous context since we have new results
+					// Context will be rebuilt when ProductRecommendations indexes products
+
+					// If no matches found, play TTS feedback
+					if (noMatchMessage) {
+						playTTSFeedback(noMatchMessage);
+					}
+					break;
+				}
+
+				case 'select_product': {
+					const selectResult = result as SelectProductResult;
+					transcription = selectResult.transcription;
+
+					// Add product to cart
+					cart.addItem(
+						{
+							productId: selectResult.addedToCart.productId,
+							name: selectResult.addedToCart.productName,
+							sku: selectResult.addedToCart.sku,
+							pricePerUnit: selectResult.addedToCart.pricePerUnit,
+							unit: selectResult.addedToCart.unit
+						},
+						selectResult.addedToCart.quantity
+					);
+
+					// Show feedback message and play TTS
+					feedbackMessage = selectResult.addedToCart.confirmationMessage;
+					playTTSFeedback(selectResult.addedToCart.confirmationMessage);
+
+					// Keep results displayed, stay in results state
+					state = 'results';
+
+					// Haptic feedback for successful add
+					if (navigator.vibrate) {
+						navigator.vibrate([100, 50, 100]);
+					}
+					break;
+				}
+
+				case 'add_all': {
+					const addAllResult = result as AddAllResult;
+					transcription = addAllResult.transcription;
+
+					// Add all products to cart
+					for (const product of addAllResult.addedProducts) {
+						cart.addItem(
+							{
+								productId: product.productId,
+								name: product.productName,
+								sku: product.sku,
+								pricePerUnit: product.pricePerUnit,
+								unit: product.unit
+							},
+							product.quantity
+						);
+					}
+
+					// Show feedback and play TTS
+					feedbackMessage = addAllResult.confirmationMessage;
+					playTTSFeedback(addAllResult.confirmationMessage);
+
+					// Clear results after adding all
+					clearResults();
+					break;
+				}
+
+				case 'clear': {
+					transcription = (result as ClearResult).transcription;
+					clearResults();
+					break;
+				}
+
+				case 'error': {
+					const errorResult = result as ErrorResult;
+					transcription = errorResult.transcription;
+					errorMessage = errorResult.errorMessage;
+					state = 'error';
+
+					// Play error message via TTS
+					playTTSFeedback(errorResult.errorMessage);
+					break;
+				}
+
+				default: {
+					// Fallback for unknown intent type - treat as new search
+					transcription = result.transcription;
+					state = 'results';
+				}
 			}
 		} catch (err) {
 			console.error('Processing error:', err);
@@ -216,10 +392,10 @@
 		if (state === 'listening') {
 			stopRecording();
 		} else if (state === 'idle' || state === 'error' || state === 'results') {
-			// Reset and start new recording
-			transcription = '';
-			recommendations = [];
+			// DON'T clear recommendations/context - let the API decide based on intent
+			// Only clear transient state
 			errorMessage = '';
+			feedbackMessage = null;
 			noMatchMessage = null;
 			startRecording();
 		}
@@ -231,6 +407,8 @@
 		recommendations = [];
 		errorMessage = '';
 		noMatchMessage = null;
+		feedbackMessage = null;
+		conversationContext = null;
 	}
 
 	function getMicButtonClasses(): string {
@@ -301,6 +479,8 @@
 				<p class="text-blue-600 font-medium">Processing...</p>
 			{:else if state === 'error'}
 				<p class="text-yellow-600 font-medium">Tap to try again</p>
+			{:else if showResults}
+				<p class="text-gray-600">Say a number to order, or search for something new</p>
 			{:else}
 				<p class="text-gray-600">Tap and tell me what you need</p>
 			{/if}
@@ -315,6 +495,18 @@
 	<!-- Transcription display -->
 	{#if transcription || isListening || isProcessing}
 		<TranscriptionDisplay text={transcription} {isProcessing} {isListening} />
+	{/if}
+
+	<!-- Feedback message (for successful actions) -->
+	{#if feedbackMessage}
+		<div class="bg-green-50 border border-green-200 rounded-lg p-4">
+			<div class="flex items-center gap-2 text-green-700">
+				<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+				</svg>
+				<span>{feedbackMessage}</span>
+			</div>
+		</div>
 	{/if}
 
 	<!-- Error message -->
@@ -356,6 +548,10 @@
 
 	<!-- Product recommendations -->
 	{#if showResults}
-		<ProductRecommendations {recommendations} onClear={clearResults} />
+		<ProductRecommendations
+			{recommendations}
+			onClear={clearResults}
+			onProductsIndexed={handleProductsIndexed}
+		/>
 	{/if}
 </div>

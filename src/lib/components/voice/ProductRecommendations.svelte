@@ -19,13 +19,54 @@
 		products: Product[];
 	}
 
+	// Indexed product for conversation context
+	export interface IndexedProduct {
+		index: number;
+		productId: string;
+		productName: string;
+		sku: string;
+		pricePerUnit: number;
+		unit: string;
+	}
+
 	interface Props {
 		recommendations: Recommendation[];
 		onAddToCart?: (product: Product, quantity: number) => void;
 		onClear?: () => void;
+		onProductsIndexed?: (products: IndexedProduct[]) => void;
 	}
 
-	let { recommendations, onAddToCart, onClear }: Props = $props();
+	let { recommendations, onAddToCart, onClear, onProductsIndexed }: Props = $props();
+
+	// Compute globally indexed products across all recommendations
+	const indexedRecommendations = $derived.by(() => {
+		let globalIndex = 1;
+		return recommendations.map((rec) => ({
+			...rec,
+			products: rec.products.map((product) => ({
+				...product,
+				globalIndex: globalIndex++
+			}))
+		}));
+	});
+
+	// Build indexed products list for context and notify parent
+	$effect(() => {
+		const indexed: IndexedProduct[] = [];
+		for (const rec of indexedRecommendations) {
+			for (const product of rec.products) {
+				indexed.push({
+					index: product.globalIndex,
+					productId: product.id,
+					productName: product.name,
+					sku: product.sku,
+					pricePerUnit: product.pricePerUnit,
+					unit: product.unit
+				});
+			}
+		}
+		onProductsIndexed?.(indexed);
+	});
 
 	// Track which products have been added
 	let addedProducts = $state<Set<string>>(new Set());
@@ -74,23 +115,10 @@
 		return 'bg-gray-100 text-gray-600';
 	}
 
-	// Flatten all unique products
-	const allProducts = $derived(() => {
-		const products: Array<{ product: Product; quantity: number }> = [];
-		for (const rec of recommendations) {
-			for (const product of rec.products) {
-				if (!products.some((p) => p.product.id === product.id)) {
-					products.push({ product, quantity: rec.quantity });
-				}
-			}
-		}
-		return products;
-	});
-
-	const hasProducts = $derived(recommendations.some((r) => r.products.length > 0));
+	const hasProducts = $derived(indexedRecommendations.some((r) => r.products.length > 0));
 </script>
 
-{#if recommendations.length > 0}
+{#if indexedRecommendations.length > 0}
 	<div class="space-y-4">
 		{#if hasProducts}
 			<!-- Quick actions -->
@@ -110,7 +138,7 @@
 			</div>
 		{/if}
 
-		{#each recommendations as rec (rec.forItem)}
+		{#each indexedRecommendations as rec (rec.forItem)}
 			<div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
 				<!-- Item header -->
 				<div class="bg-gray-50 px-4 py-2 border-b">
@@ -133,6 +161,11 @@
 						{#each rec.products as product (product.id)}
 							{@const isAdded = addedProducts.has(product.id)}
 							<div class="px-4 py-3 flex items-center gap-3">
+								<!-- Index badge for voice reference -->
+								<div class="w-8 h-8 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-sm flex-shrink-0">
+									{product.globalIndex}
+								</div>
+
 								<!-- Product info -->
 								<div class="flex-1 min-w-0">
 									<div class="flex items-center gap-2 flex-wrap">

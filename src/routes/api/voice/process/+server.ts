@@ -1,18 +1,33 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { extractOrderIntent } from '$lib/server/ai/extract-voice-intent';
+import {
+	extractOrderIntentWithContext,
+	type VoiceIntentType,
+	type ConversationContext
+} from '$lib/server/ai/extract-voice-intent';
 import { searchProjectProducts, type ProductMatch } from '$lib/server/voice/product-search';
 import { speechToText } from '$lib/server/elevenlabs';
 
-export interface ProcessedVoiceResult {
+// Context product for client-side tracking
+export interface ContextProduct {
+	index: number;
+	productId: string;
+	productName: string;
+	sku: string;
+	pricePerUnit: number;
+	unit: string;
+}
+
+// Response for new_search intent
+export interface NewSearchResult {
 	transcription: string;
+	intentType: 'new_search';
 	intent: {
 		items: Array<{
 			description: string;
 			quantity: number;
 			confidence: number;
 		}>;
-		clarificationNeeded: string | null;
 	};
 	recommendations: Array<{
 		forItem: string;
@@ -22,14 +37,67 @@ export interface ProcessedVoiceResult {
 	noMatchMessage: string | null;
 }
 
+// Response for select_product intent
+export interface SelectProductResult {
+	transcription: string;
+	intentType: 'select_product';
+	addedToCart: {
+		productId: string;
+		productName: string;
+		sku: string;
+		pricePerUnit: number;
+		unit: string;
+		quantity: number;
+		confirmationMessage: string;
+	};
+}
+
+// Response for add_all intent
+export interface AddAllResult {
+	transcription: string;
+	intentType: 'add_all';
+	addedProducts: Array<{
+		productId: string;
+		productName: string;
+		sku: string;
+		pricePerUnit: number;
+		unit: string;
+		quantity: number;
+	}>;
+	confirmationMessage: string;
+}
+
+// Response for clear intent
+export interface ClearResult {
+	transcription: string;
+	intentType: 'clear';
+}
+
+// Response for errors (e.g., invalid product index)
+export interface ErrorResult {
+	transcription: string;
+	intentType: 'error';
+	errorMessage: string;
+}
+
+export type ProcessedVoiceResult =
+	| NewSearchResult
+	| SelectProductResult
+	| AddAllResult
+	| ClearResult
+	| ErrorResult;
+
 /**
  * POST /api/voice/process
  *
- * Process voice input for ordering:
+ * Process voice input for ordering with conversation context:
  * 1. If audio is provided, transcribe it using ElevenLabs
- * 2. Extract ordering intent using Claude AI
- * 3. Search for matching products in the project's catalogue
- * 4. Return recommendations
+ * 2. Extract ordering intent using Claude AI (context-aware)
+ * 3. Handle different intent types:
+ *    - new_search: Search for products
+ *    - select_product: Add specific product from context to cart
+ *    - add_all: Add all products from context to cart
+ *    - clear: Clear the conversation
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	// Check authentication
@@ -41,12 +109,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	let transcription: string;
 	let projectId: string;
+	let conversationContext: ConversationContext | null = null;
 
 	if (contentType.includes('multipart/form-data')) {
 		// Audio file upload - transcribe first
 		const formData = await request.formData();
 		const audioFile = formData.get('audio') as File | null;
 		projectId = formData.get('projectId') as string;
+		const contextJson = formData.get('conversationContext') as string | null;
 
 		if (!audioFile) {
 			throw error(400, 'Audio file is required');
@@ -54,6 +124,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 		if (!projectId) {
 			throw error(400, 'Project ID is required');
+		}
+
+		// Parse conversation context if provided
+		if (contextJson) {
+			try {
+				conversationContext = JSON.parse(contextJson);
+			} catch {
+				// Ignore invalid context
+			}
 		}
 
 		// Transcribe audio using ElevenLabs
@@ -64,6 +143,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const body = await request.json();
 		transcription = body.transcription;
 		projectId = body.projectId;
+		conversationContext = body.conversationContext || null;
 
 		if (!transcription || typeof transcription !== 'string') {
 			throw error(400, 'Transcription is required');
@@ -74,14 +154,117 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		}
 	}
 
-	// Extract ordering intent from the transcription
-	const intent = await extractOrderIntent(transcription);
+	// Extract ordering intent with context awareness
+	const intentResult = await extractOrderIntentWithContext(transcription, conversationContext);
 
-	// Search for products for each extracted item (no clarification - just search)
-	const recommendations: ProcessedVoiceResult['recommendations'] = [];
+	// Handle different intent types
+	switch (intentResult.intentType) {
+		case 'select_product': {
+			// User wants to select a specific product from context
+			if (!conversationContext || conversationContext.products.length === 0) {
+				// No context available, treat as new search
+				return handleNewSearch(transcription, projectId, intentResult.rawTranscription);
+			}
+
+			const selection = intentResult.productSelection;
+			if (!selection) {
+				return json({
+					transcription,
+					intentType: 'error',
+					errorMessage: "I couldn't understand which product you want. Try saying the number, like 'the first one' or 'number 2'."
+				} satisfies ErrorResult);
+			}
+
+			// Find the product by index
+			const selectedProduct = conversationContext.products.find(
+				(p) => p.index === selection.index
+			);
+
+			if (!selectedProduct) {
+				const maxIndex = Math.max(...conversationContext.products.map((p) => p.index));
+				return json({
+					transcription,
+					intentType: 'error',
+					errorMessage: `I only see ${maxIndex} product${maxIndex === 1 ? '' : 's'}. Try saying a number from 1 to ${maxIndex}.`
+				} satisfies ErrorResult);
+			}
+
+			return json({
+				transcription,
+				intentType: 'select_product',
+				addedToCart: {
+					productId: selectedProduct.productId,
+					productName: selectedProduct.productName,
+					sku: selectedProduct.sku,
+					pricePerUnit: selectedProduct.pricePerUnit,
+					unit: selectedProduct.unit,
+					quantity: selection.quantity,
+					confirmationMessage: `Adding ${selection.quantity} ${selectedProduct.productName} to your cart.`
+				}
+			} satisfies SelectProductResult);
+		}
+
+		case 'add_all': {
+			// User wants to add all displayed products
+			if (!conversationContext || conversationContext.products.length === 0) {
+				return json({
+					transcription,
+					intentType: 'error',
+					errorMessage: "There are no products to add. Try searching for something first."
+				} satisfies ErrorResult);
+			}
+
+			const addedProducts = conversationContext.products.map((p) => ({
+				productId: p.productId,
+				productName: p.productName,
+				sku: p.sku,
+				pricePerUnit: p.pricePerUnit,
+				unit: p.unit,
+				quantity: 1 // Default to 1 each for add_all
+			}));
+
+			return json({
+				transcription,
+				intentType: 'add_all',
+				addedProducts,
+				confirmationMessage: `Adding ${addedProducts.length} products to your cart.`
+			} satisfies AddAllResult);
+		}
+
+		case 'clear': {
+			return json({
+				transcription,
+				intentType: 'clear'
+			} satisfies ClearResult);
+		}
+
+		case 'new_search':
+		default: {
+			return handleNewSearch(transcription, projectId, intentResult.rawTranscription, intentResult.items);
+		}
+	}
+};
+
+/**
+ * Handle new search intent - search for products
+ */
+async function handleNewSearch(
+	transcription: string,
+	projectId: string,
+	rawTranscription: string,
+	items?: Array<{ description: string; quantity: number; searchTerms: string[]; confidence: number }>
+): Promise<Response> {
+	const searchItems = items || [{
+		description: rawTranscription,
+		quantity: 1,
+		searchTerms: [],
+		confidence: 0.5
+	}];
+
+	const recommendations: NewSearchResult['recommendations'] = [];
 	let totalProductsFound = 0;
 
-	for (const item of intent.items) {
+	for (const item of searchItems) {
 		const searchResult = await searchProjectProducts(
 			projectId,
 			item.searchTerms,
@@ -100,8 +283,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	// Determine if we need to show a "no match" message
 	let noMatchMessage: string | null = null;
-	if (intent.items.length > 0 && totalProductsFound === 0) {
-		const itemNames = intent.items.map((i) => i.description).join(', ');
+	if (searchItems.length > 0 && totalProductsFound === 0) {
+		const itemNames = searchItems.map((i) => i.description).join(', ');
 		noMatchMessage = `I couldn't find "${itemNames}" in your project catalogue. Try using different words, or browse the main catalogue to find what you need.`;
 	} else if (recommendations.some((r) => r.products.length === 0)) {
 		const noMatchItems = recommendations
@@ -110,19 +293,17 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		noMatchMessage = `No matches found for: ${noMatchItems.join(', ')}. Try different words or check the main catalogue.`;
 	}
 
-	const result: ProcessedVoiceResult = {
+	return json({
 		transcription,
+		intentType: 'new_search',
 		intent: {
-			items: intent.items.map((item) => ({
+			items: searchItems.map((item) => ({
 				description: item.description,
 				quantity: item.quantity,
 				confidence: item.confidence
-			})),
-			clarificationNeeded: null
+			}))
 		},
 		recommendations,
 		noMatchMessage
-	};
-
-	return json(result);
-};
+	} satisfies NewSearchResult);
+}
