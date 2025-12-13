@@ -36,6 +36,8 @@ export const actions: Actions = {
 		const formData = await request.formData();
 		const projectId = formData.get('projectId') as string;
 		const cartJson = formData.get('cart') as string;
+		const notes = (formData.get('notes') as string) || null;
+		const priority = (formData.get('priority') as string) === 'urgent' ? 'urgent' : 'normal';
 
 		if (!projectId || !cartJson) {
 			return fail(400, { message: 'Missing required data' });
@@ -91,7 +93,9 @@ export const actions: Actions = {
 			status: isAutoApproved ? 'approved' : 'pending',
 			totalCents,
 			approvedAt: isAutoApproved ? new Date() : null,
-			approvedBy: isAutoApproved ? user.id : null // Self-approved for auto
+			approvedBy: isAutoApproved ? user.id : null, // Self-approved for auto
+			notes: notes || null,
+			priority
 		});
 
 		// Create order items

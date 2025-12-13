@@ -1,6 +1,6 @@
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '$env/dynamic/private';
 
@@ -15,6 +15,9 @@ export interface ProductMatch {
 	subcategoryName: string | null;
 	matchScore: number;
 	matchReason: string;
+	// Smart quantity suggestion
+	usualQuantity?: number;
+	orderCount?: number;
 }
 
 export interface SearchResult {
@@ -136,12 +139,14 @@ function simpleMatch(
 /**
  * Search for products assigned to a specific project using AI-powered semantic matching.
  * The AI looks at ALL products and picks the most relevant ones for the user's request.
+ * If userId is provided, includes smart quantity suggestions based on order history.
  */
 export async function searchProjectProducts(
 	projectId: string,
 	searchTerms: string[],
 	itemDescription: string,
-	maxResults: number = 5
+	maxResults: number = 5,
+	userId?: string
 ): Promise<SearchResult> {
 	// Get all products assigned to this project
 	const projectProducts = await db
@@ -177,6 +182,31 @@ export async function searchProjectProducts(
 	// Use AI to find the best matches
 	const aiMatches = await aiMatchProducts(itemDescription, productsForAI, maxResults);
 
+	// Get user favorites for smart quantity suggestions
+	const userFavorites = new Map<string, { usageCount: number; defaultQuantity: number }>();
+	if (userId) {
+		const favorites = await db
+			.select({
+				productId: table.userFavorite.productId,
+				usageCount: table.userFavorite.usageCount,
+				defaultQuantity: table.userFavorite.defaultQuantity
+			})
+			.from(table.userFavorite)
+			.where(
+				and(
+					eq(table.userFavorite.userId, userId),
+					eq(table.userFavorite.projectId, projectId)
+				)
+			);
+
+		for (const fav of favorites) {
+			userFavorites.set(fav.productId, {
+				usageCount: fav.usageCount,
+				defaultQuantity: fav.defaultQuantity ?? 1
+			});
+		}
+	}
+
 	// Build the final product list with match info
 	const matchedProducts: ProductMatch[] = [];
 
@@ -184,6 +214,8 @@ export async function searchProjectProducts(
 		const productData = projectProducts.find(p => p.product.id === match.id);
 		if (productData) {
 			const { product, category } = productData;
+			const favorite = userFavorites.get(product.id);
+
 			matchedProducts.push({
 				id: product.id,
 				name: product.name,
@@ -194,7 +226,10 @@ export async function searchProjectProducts(
 				categoryName: category?.name || null,
 				subcategoryName: null, // Simplified - can add later if needed
 				matchScore: match.score,
-				matchReason: match.reason
+				matchReason: match.reason,
+				// Include smart quantity suggestion if user has ordered before
+				usualQuantity: favorite?.defaultQuantity,
+				orderCount: favorite?.usageCount
 			});
 		}
 	}

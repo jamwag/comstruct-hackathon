@@ -87,11 +87,90 @@
 		errorMessage: string;
 	}
 
+	// Cart management result types
+	interface CartQueryResult {
+		transcription: string;
+		intentType: 'cart_query';
+		cartSummary: string;
+	}
+
+	interface CartTotalResult {
+		transcription: string;
+		intentType: 'cart_total';
+		totalMessage: string;
+	}
+
+	interface CartRemoveResult {
+		transcription: string;
+		intentType: 'cart_remove';
+		itemName: string;
+		confirmationMessage: string;
+	}
+
+	interface CartUpdateResult {
+		transcription: string;
+		intentType: 'cart_update';
+		itemName: string;
+		newQuantity: number;
+		confirmationMessage: string;
+	}
+
+	interface CartClearResult {
+		transcription: string;
+		intentType: 'cart_clear';
+		confirmationMessage: string;
+	}
+
+	// Note & priority result types
+	interface AddNoteResult {
+		transcription: string;
+		intentType: 'add_note';
+		note: string;
+		confirmationMessage: string;
+	}
+
+	interface SetPriorityResult {
+		transcription: string;
+		intentType: 'set_priority';
+		priority: 'normal' | 'urgent';
+		confirmationMessage: string;
+	}
+
+	// Reorder result types
+	interface ReorderFavoritesResult {
+		transcription: string;
+		intentType: 'reorder_favorites';
+		message: string;
+	}
+
+	interface ReorderPastResult {
+		transcription: string;
+		intentType: 'reorder_past';
+		dateReference: string;
+		message: string;
+	}
+
+	interface OrderHistoryResult {
+		transcription: string;
+		intentType: 'order_history';
+		message: string;
+	}
+
 	type ProcessedVoiceResult =
 		| NewSearchResult
 		| SelectProductResult
 		| AddAllResult
 		| ClearResult
+		| CartQueryResult
+		| CartTotalResult
+		| CartRemoveResult
+		| CartUpdateResult
+		| CartClearResult
+		| AddNoteResult
+		| SetPriorityResult
+		| ReorderFavoritesResult
+		| ReorderPastResult
+		| OrderHistoryResult
 		| ErrorResult;
 
 	type VoiceState = 'idle' | 'listening' | 'processing' | 'results' | 'error';
@@ -126,7 +205,8 @@
 
 	const isListening = $derived(state === 'listening');
 	const isProcessing = $derived(state === 'processing');
-	const showResults = $derived(state === 'results' && recommendations.length > 0);
+	// Keep showing results while listening/processing so user can reference them by number
+	const showResults = $derived(recommendations.length > 0 && state !== 'error');
 	const canInteract = $derived(!disabled && projectId !== null);
 
 	// Handler for when products are indexed by ProductRecommendations
@@ -142,6 +222,21 @@
 					unit: p.unit
 				}))
 			};
+		}
+	}
+
+	// Track product as a favorite when added to cart
+	async function trackFavorite(productId: string, quantity: number) {
+		if (!projectId) return;
+
+		try {
+			await fetch('/api/voice/favorites', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ projectId, productId, quantity })
+			});
+		} catch {
+			// Silently fail - favorites tracking is not critical
 		}
 	}
 
@@ -236,6 +331,20 @@
 				formData.append('conversationContext', JSON.stringify(conversationContext));
 			}
 
+			// Include cart context for cart queries
+			const cartState = cart.getState();
+			if (cartState.items.length > 0) {
+				const cartContext = {
+					items: cartState.items.map((item) => ({
+						name: item.name,
+						quantity: item.quantity,
+						pricePerUnit: item.pricePerUnit
+					})),
+					totalCents: cart.getTotal(cartState.items)
+				};
+				formData.append('cartContext', JSON.stringify(cartContext));
+			}
+
 			const response = await fetch('/api/voice/process', {
 				method: 'POST',
 				body: formData
@@ -283,6 +392,9 @@
 						selectResult.addedToCart.quantity
 					);
 
+					// Track as favorite (fire and forget)
+					trackFavorite(selectResult.addedToCart.productId, selectResult.addedToCart.quantity);
+
 					// Show feedback message and play TTS
 					feedbackMessage = selectResult.addedToCart.confirmationMessage;
 					playTTSFeedback(selectResult.addedToCart.confirmationMessage);
@@ -301,7 +413,7 @@
 					const addAllResult = result as AddAllResult;
 					transcription = addAllResult.transcription;
 
-					// Add all products to cart
+					// Add all products to cart and track as favorites
 					for (const product of addAllResult.addedProducts) {
 						cart.addItem(
 							{
@@ -313,6 +425,8 @@
 							},
 							product.quantity
 						);
+						// Track as favorite (fire and forget)
+						trackFavorite(product.productId, product.quantity);
 					}
 
 					// Show feedback and play TTS
@@ -338,6 +452,206 @@
 
 					// Play error message via TTS
 					playTTSFeedback(errorResult.errorMessage);
+					break;
+				}
+
+				// ===== Cart Management =====
+				case 'cart_query': {
+					const queryResult = result as CartQueryResult;
+					transcription = queryResult.transcription;
+					feedbackMessage = queryResult.cartSummary;
+					playTTSFeedback(queryResult.cartSummary);
+					state = recommendations.length > 0 ? 'results' : 'idle';
+					break;
+				}
+
+				case 'cart_total': {
+					const totalResult = result as CartTotalResult;
+					transcription = totalResult.transcription;
+					feedbackMessage = totalResult.totalMessage;
+					playTTSFeedback(totalResult.totalMessage);
+					state = recommendations.length > 0 ? 'results' : 'idle';
+					break;
+				}
+
+				case 'cart_remove': {
+					const removeResult = result as CartRemoveResult;
+					transcription = removeResult.transcription;
+
+					// Remove item from cart by name
+					const removed = cart.removeByName(removeResult.itemName);
+					if (removed) {
+						feedbackMessage = removeResult.confirmationMessage;
+						playTTSFeedback(removeResult.confirmationMessage);
+					} else {
+						feedbackMessage = `Could not find "${removeResult.itemName}" in your cart.`;
+						playTTSFeedback(`I couldn't find ${removeResult.itemName} in your cart.`);
+					}
+					state = recommendations.length > 0 ? 'results' : 'idle';
+					break;
+				}
+
+				case 'cart_update': {
+					const updateResult = result as CartUpdateResult;
+					transcription = updateResult.transcription;
+
+					// Update item quantity by name
+					const updated = cart.updateQuantityByName(updateResult.itemName, updateResult.newQuantity);
+					if (updated) {
+						feedbackMessage = updateResult.confirmationMessage;
+						playTTSFeedback(updateResult.confirmationMessage);
+					} else {
+						feedbackMessage = `Could not find "${updateResult.itemName}" in your cart.`;
+						playTTSFeedback(`I couldn't find ${updateResult.itemName} in your cart.`);
+					}
+					state = recommendations.length > 0 ? 'results' : 'idle';
+					break;
+				}
+
+				case 'cart_clear': {
+					const clearCartResult = result as CartClearResult;
+					transcription = clearCartResult.transcription;
+					cart.clearItems();
+					feedbackMessage = clearCartResult.confirmationMessage;
+					playTTSFeedback(clearCartResult.confirmationMessage);
+					state = recommendations.length > 0 ? 'results' : 'idle';
+					break;
+				}
+
+				// ===== Notes & Priority =====
+				case 'add_note': {
+					const noteResult = result as AddNoteResult;
+					transcription = noteResult.transcription;
+					cart.setNote(noteResult.note);
+					feedbackMessage = noteResult.confirmationMessage;
+					playTTSFeedback(noteResult.confirmationMessage);
+					state = recommendations.length > 0 ? 'results' : 'idle';
+					break;
+				}
+
+				case 'set_priority': {
+					const priorityResult = result as SetPriorityResult;
+					transcription = priorityResult.transcription;
+					cart.setPriority(priorityResult.priority);
+					feedbackMessage = priorityResult.confirmationMessage;
+					playTTSFeedback(priorityResult.confirmationMessage);
+					state = recommendations.length > 0 ? 'results' : 'idle';
+					break;
+				}
+
+				// ===== Reorder & Favorites =====
+				case 'reorder_favorites': {
+					const favResult = result as ReorderFavoritesResult;
+					transcription = favResult.transcription;
+					state = 'processing';
+
+					// Fetch and add favorites to cart
+					try {
+						const favResponse = await fetch(`/api/voice/favorites?projectId=${projectId}`);
+						if (favResponse.ok) {
+							const { favorites } = await favResponse.json();
+							if (favorites.length === 0) {
+								feedbackMessage = "You don't have any favorites yet. Order some items first!";
+								playTTSFeedback("You don't have any favorites yet. Order some items first!");
+							} else {
+								// Add favorites to cart
+								for (const fav of favorites) {
+									cart.addItem(
+										{
+											productId: fav.productId,
+											name: fav.productName,
+											sku: fav.sku,
+											pricePerUnit: fav.pricePerUnit,
+											unit: fav.unit
+										},
+										fav.defaultQuantity
+									);
+								}
+								const message = `Added ${favorites.length} favorite items to your cart.`;
+								feedbackMessage = message;
+								playTTSFeedback(message);
+							}
+						} else {
+							feedbackMessage = 'Could not fetch your favorites.';
+							playTTSFeedback('Sorry, I could not fetch your favorites.');
+						}
+					} catch {
+						feedbackMessage = 'Could not fetch your favorites.';
+						playTTSFeedback('Sorry, I could not fetch your favorites.');
+					}
+					state = recommendations.length > 0 ? 'results' : 'idle';
+					break;
+				}
+
+				case 'reorder_past': {
+					const pastResult = result as ReorderPastResult;
+					transcription = pastResult.transcription;
+					state = 'processing';
+
+					// Fetch past order by date and add to cart
+					try {
+						const historyResponse = await fetch(
+							`/api/voice/order-history?projectId=${projectId}&dateRef=${encodeURIComponent(pastResult.dateReference)}&limit=1`
+						);
+						if (historyResponse.ok) {
+							const { orders, summary } = await historyResponse.json();
+							if (orders.length === 0) {
+								feedbackMessage = summary;
+								playTTSFeedback(summary);
+							} else {
+								// Add items from the order to cart
+								const orderToReorder = orders[0];
+								for (const item of orderToReorder.items) {
+									cart.addItem(
+										{
+											productId: item.productId,
+											name: item.productName,
+											sku: item.sku,
+											pricePerUnit: item.pricePerUnit,
+											unit: item.unit
+										},
+										item.quantity
+									);
+								}
+								const message = `Added ${orderToReorder.items.length} items from your order to your cart.`;
+								feedbackMessage = message;
+								playTTSFeedback(message);
+							}
+						} else {
+							feedbackMessage = 'Could not find that order.';
+							playTTSFeedback('Sorry, I could not find that order.');
+						}
+					} catch {
+						feedbackMessage = 'Could not fetch your order history.';
+						playTTSFeedback('Sorry, I could not fetch your order history.');
+					}
+					state = recommendations.length > 0 ? 'results' : 'idle';
+					break;
+				}
+
+				case 'order_history': {
+					const historyResult = result as OrderHistoryResult;
+					transcription = historyResult.transcription;
+					state = 'processing';
+
+					// Fetch and speak order history
+					try {
+						const historyResponse = await fetch(
+							`/api/voice/order-history?projectId=${projectId}&limit=3`
+						);
+						if (historyResponse.ok) {
+							const { summary } = await historyResponse.json();
+							feedbackMessage = summary;
+							playTTSFeedback(summary);
+						} else {
+							feedbackMessage = 'Could not fetch your order history.';
+							playTTSFeedback('Sorry, I could not fetch your order history.');
+						}
+					} catch {
+						feedbackMessage = 'Could not fetch your order history.';
+						playTTSFeedback('Sorry, I could not fetch your order history.');
+					}
+					state = recommendations.length > 0 ? 'results' : 'idle';
 					break;
 				}
 

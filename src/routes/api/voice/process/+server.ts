@@ -3,7 +3,8 @@ import type { RequestHandler } from './$types';
 import {
 	extractOrderIntentWithContext,
 	type VoiceIntentType,
-	type ConversationContext
+	type ConversationContext,
+	type CartContext
 } from '$lib/server/ai/extract-voice-intent';
 import { searchProjectProducts, type ProductMatch } from '$lib/server/voice/product-search';
 import { speechToText } from '$lib/server/elevenlabs';
@@ -80,11 +81,97 @@ export interface ErrorResult {
 	errorMessage: string;
 }
 
+// Response for cart_query intent
+export interface CartQueryResult {
+	transcription: string;
+	intentType: 'cart_query';
+	cartSummary: string;
+}
+
+// Response for cart_total intent
+export interface CartTotalResult {
+	transcription: string;
+	intentType: 'cart_total';
+	totalMessage: string;
+}
+
+// Response for cart_remove intent
+export interface CartRemoveResult {
+	transcription: string;
+	intentType: 'cart_remove';
+	itemName: string;
+	confirmationMessage: string;
+}
+
+// Response for cart_update intent
+export interface CartUpdateResult {
+	transcription: string;
+	intentType: 'cart_update';
+	itemName: string;
+	newQuantity: number;
+	confirmationMessage: string;
+}
+
+// Response for cart_clear intent
+export interface CartClearResult {
+	transcription: string;
+	intentType: 'cart_clear';
+	confirmationMessage: string;
+}
+
+// Response for add_note intent
+export interface AddNoteResult {
+	transcription: string;
+	intentType: 'add_note';
+	note: string;
+	confirmationMessage: string;
+}
+
+// Response for set_priority intent
+export interface SetPriorityResult {
+	transcription: string;
+	intentType: 'set_priority';
+	priority: 'normal' | 'urgent';
+	confirmationMessage: string;
+}
+
+// Response for reorder_favorites intent
+export interface ReorderFavoritesResult {
+	transcription: string;
+	intentType: 'reorder_favorites';
+	message: string;
+}
+
+// Response for reorder_past intent
+export interface ReorderPastResult {
+	transcription: string;
+	intentType: 'reorder_past';
+	dateReference: string;
+	message: string;
+}
+
+// Response for order_history intent
+export interface OrderHistoryResult {
+	transcription: string;
+	intentType: 'order_history';
+	message: string;
+}
+
 export type ProcessedVoiceResult =
 	| NewSearchResult
 	| SelectProductResult
 	| AddAllResult
 	| ClearResult
+	| CartQueryResult
+	| CartTotalResult
+	| CartRemoveResult
+	| CartUpdateResult
+	| CartClearResult
+	| AddNoteResult
+	| SetPriorityResult
+	| ReorderFavoritesResult
+	| ReorderPastResult
+	| OrderHistoryResult
 	| ErrorResult;
 
 /**
@@ -110,6 +197,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	let transcription: string;
 	let projectId: string;
 	let conversationContext: ConversationContext | null = null;
+	let cartContext: CartContext | null = null;
 
 	if (contentType.includes('multipart/form-data')) {
 		// Audio file upload - transcribe first
@@ -117,6 +205,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const audioFile = formData.get('audio') as File | null;
 		projectId = formData.get('projectId') as string;
 		const contextJson = formData.get('conversationContext') as string | null;
+		const cartContextJson = formData.get('cartContext') as string | null;
 
 		if (!audioFile) {
 			throw error(400, 'Audio file is required');
@@ -135,6 +224,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			}
 		}
 
+		// Parse cart context if provided
+		if (cartContextJson) {
+			try {
+				cartContext = JSON.parse(cartContextJson);
+			} catch {
+				// Ignore invalid cart context
+			}
+		}
+
 		// Transcribe audio using ElevenLabs
 		const audioBuffer = await audioFile.arrayBuffer();
 		transcription = await speechToText({ audioBuffer });
@@ -144,6 +242,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		transcription = body.transcription;
 		projectId = body.projectId;
 		conversationContext = body.conversationContext || null;
+		cartContext = body.cartContext || null;
 
 		if (!transcription || typeof transcription !== 'string') {
 			throw error(400, 'Transcription is required');
@@ -155,7 +254,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	}
 
 	// Extract ordering intent with context awareness
-	const intentResult = await extractOrderIntentWithContext(transcription, conversationContext);
+	const intentResult = await extractOrderIntentWithContext(transcription, conversationContext, cartContext);
 
 	// Handle different intent types
 	switch (intentResult.intentType) {
@@ -238,9 +337,144 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			} satisfies ClearResult);
 		}
 
+		// ===== Cart Management =====
+		case 'cart_query': {
+			if (!cartContext || cartContext.items.length === 0) {
+				return json({
+					transcription,
+					intentType: 'cart_query',
+					cartSummary: 'Your cart is empty.'
+				} satisfies CartQueryResult);
+			}
+
+			const itemSummaries = cartContext.items.map((item) =>
+				`${item.quantity} ${item.name}`
+			);
+			const cartSummary = `Your cart has ${itemSummaries.join(', ')}.`;
+
+			return json({
+				transcription,
+				intentType: 'cart_query',
+				cartSummary
+			} satisfies CartQueryResult);
+		}
+
+		case 'cart_total': {
+			if (!cartContext || cartContext.items.length === 0) {
+				return json({
+					transcription,
+					intentType: 'cart_total',
+					totalMessage: 'Your cart is empty.'
+				} satisfies CartTotalResult);
+			}
+
+			const totalFrancs = (cartContext.totalCents / 100).toFixed(2);
+			const totalMessage = `Your total is ${totalFrancs} Swiss francs.`;
+
+			return json({
+				transcription,
+				intentType: 'cart_total',
+				totalMessage
+			} satisfies CartTotalResult);
+		}
+
+		case 'cart_remove': {
+			if (!intentResult.cartAction?.itemName) {
+				return json({
+					transcription,
+					intentType: 'error',
+					errorMessage: "I couldn't understand which item to remove. Try saying something like 'remove the gloves'."
+				} satisfies ErrorResult);
+			}
+
+			return json({
+				transcription,
+				intentType: 'cart_remove',
+				itemName: intentResult.cartAction.itemName,
+				confirmationMessage: `Removing ${intentResult.cartAction.itemName} from your cart.`
+			} satisfies CartRemoveResult);
+		}
+
+		case 'cart_update': {
+			if (!intentResult.cartAction?.itemName || intentResult.cartAction.newQuantity === undefined) {
+				return json({
+					transcription,
+					intentType: 'error',
+					errorMessage: "I couldn't understand the update. Try saying something like 'change screws to 20'."
+				} satisfies ErrorResult);
+			}
+
+			return json({
+				transcription,
+				intentType: 'cart_update',
+				itemName: intentResult.cartAction.itemName,
+				newQuantity: intentResult.cartAction.newQuantity,
+				confirmationMessage: `Updating ${intentResult.cartAction.itemName} to ${intentResult.cartAction.newQuantity}.`
+			} satisfies CartUpdateResult);
+		}
+
+		case 'cart_clear': {
+			return json({
+				transcription,
+				intentType: 'cart_clear',
+				confirmationMessage: 'Clearing your cart.'
+			} satisfies CartClearResult);
+		}
+
+		// ===== Notes & Priority =====
+		case 'add_note': {
+			const note = intentResult.note || transcription;
+			return json({
+				transcription,
+				intentType: 'add_note',
+				note,
+				confirmationMessage: `Adding note: ${note}`
+			} satisfies AddNoteResult);
+		}
+
+		case 'set_priority': {
+			const priority = intentResult.priority || 'urgent';
+			return json({
+				transcription,
+				intentType: 'set_priority',
+				priority,
+				confirmationMessage: priority === 'urgent'
+					? 'Marking your order as urgent.'
+					: 'Setting normal priority for your order.'
+			} satisfies SetPriorityResult);
+		}
+
+		// ===== Reorder & Favorites =====
+		case 'reorder_favorites': {
+			// This will be handled by the client - returns a signal to fetch favorites
+			return json({
+				transcription,
+				intentType: 'reorder_favorites',
+				message: 'Getting your usual items.'
+			} satisfies ReorderFavoritesResult);
+		}
+
+		case 'reorder_past': {
+			const dateRef = intentResult.dateReference || 'recently';
+			return json({
+				transcription,
+				intentType: 'reorder_past',
+				dateReference: dateRef,
+				message: `Looking for your order from ${dateRef}.`
+			} satisfies ReorderPastResult);
+		}
+
+		case 'order_history': {
+			return json({
+				transcription,
+				intentType: 'order_history',
+				message: 'Getting your order history.'
+			} satisfies OrderHistoryResult);
+		}
+
 		case 'new_search':
 		default: {
-			return handleNewSearch(transcription, projectId, intentResult.rawTranscription, intentResult.items);
+			return handleNewSearch(transcription, projectId, intentResult.rawTranscription, intentResult.items, locals.user.id);
 		}
 	}
 };
@@ -252,7 +486,8 @@ async function handleNewSearch(
 	transcription: string,
 	projectId: string,
 	rawTranscription: string,
-	items?: Array<{ description: string; quantity: number; searchTerms: string[]; confidence: number }>
+	items?: Array<{ description: string; quantity: number; searchTerms: string[]; confidence: number }>,
+	userId?: string
 ): Promise<Response> {
 	const searchItems = items || [{
 		description: rawTranscription,
@@ -269,7 +504,8 @@ async function handleNewSearch(
 			projectId,
 			item.searchTerms,
 			item.description,
-			8 // Show up to 8 products per item for better selection
+			8, // Show up to 8 products per item for better selection
+			userId // Pass userId for smart quantity suggestions
 		);
 
 		totalProductsFound += searchResult.products.length;

@@ -3,6 +3,7 @@ import { pgTable, pgEnum, integer, text, timestamp, primaryKey, boolean } from '
 export const userRoleEnum = pgEnum('user_role', ['worker', 'manager']);
 export const consumableTypeEnum = pgEnum('consumable_type', ['single-use', 'reusable']);
 export const orderStatusEnum = pgEnum('order_status', ['pending', 'approved', 'rejected']);
+export const orderPriorityEnum = pgEnum('order_priority', ['normal', 'urgent']);
 
 export const user = pgTable('user', {
 	id: text('id').primaryKey(),
@@ -147,7 +148,10 @@ export const order = pgTable('order', {
 	createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
 	approvedAt: timestamp('approved_at', { withTimezone: true, mode: 'date' }),
 	approvedBy: text('approved_by').references(() => user.id),
-	rejectionReason: text('rejection_reason')
+	rejectionReason: text('rejection_reason'),
+	// Voice ordering enhancements
+	notes: text('notes'),
+	priority: orderPriorityEnum('priority').default('normal')
 });
 
 export type Order = typeof order.$inferSelect;
@@ -167,3 +171,23 @@ export const orderItem = pgTable('order_item', {
 });
 
 export type OrderItem = typeof orderItem.$inferSelect;
+
+// User Favorites - tracks frequently ordered products per user/project
+export const userFavorite = pgTable(
+	'user_favorite',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.references(() => user.id, { onDelete: 'cascade' })
+			.notNull(),
+		productId: text('product_id')
+			.references(() => product.id, { onDelete: 'cascade' })
+			.notNull(),
+		projectId: text('project_id').references(() => project.id, { onDelete: 'cascade' }),
+		usageCount: integer('usage_count').default(1).notNull(),
+		lastUsedAt: timestamp('last_used_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+		defaultQuantity: integer('default_quantity').default(1)
+	}
+);
+
+export type UserFavorite = typeof userFavorite.$inferSelect;

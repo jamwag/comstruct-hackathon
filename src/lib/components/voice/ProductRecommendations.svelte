@@ -11,6 +11,9 @@
 		categoryName: string | null;
 		matchScore: number;
 		matchReason: string;
+		// Smart quantity suggestion
+		usualQuantity?: number;
+		orderCount?: number;
 	}
 
 	interface Recommendation {
@@ -160,6 +163,7 @@
 					<div class="divide-y">
 						{#each rec.products as product (product.id)}
 							{@const isAdded = addedProducts.has(product.id)}
+							{@const suggestedQty = product.usualQuantity || rec.quantity}
 							<div class="px-4 py-3 flex items-center gap-3">
 								<!-- Index badge for voice reference -->
 								<div class="w-8 h-8 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-sm flex-shrink-0">
@@ -182,6 +186,15 @@
 										{/if}
 									</div>
 									<div class="text-xs text-gray-400 mt-0.5">{product.matchReason}</div>
+									<!-- Smart quantity suggestion -->
+									{#if product.usualQuantity && product.orderCount}
+										<div class="mt-1 text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded-md inline-flex items-center gap-1">
+											<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+												<path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"/>
+											</svg>
+											<span>You usually order {product.usualQuantity}</span>
+										</div>
+									{/if}
 								</div>
 
 								<!-- Price -->
@@ -192,7 +205,7 @@
 
 								<!-- Add button -->
 								<button
-									onclick={() => handleAddToCart(product, rec.quantity)}
+									onclick={() => handleAddToCart(product, suggestedQty)}
 									disabled={isAdded}
 									class="px-4 py-2 rounded-lg font-medium min-w-20 transition-all {isAdded
 										? 'bg-green-100 text-green-700 cursor-default'
@@ -200,6 +213,8 @@
 								>
 									{#if isAdded}
 										Added
+									{:else if product.usualQuantity}
+										Add {product.usualQuantity}
 									{:else}
 										Add
 									{/if}
