@@ -1,7 +1,11 @@
 <script lang="ts">
 	import type { PageData } from './$types';
+	import VoiceMicButton from '$lib/components/voice/VoiceMicButton.svelte';
 
 	let { data }: { data: PageData } = $props();
+
+	// Selected project for voice ordering (default to first project)
+	let selectedProjectId = $state<string | null>(data.projects.length > 0 ? data.projects[0].id : null);
 
 	function formatPrice(cents: number): string {
 		return (cents / 100).toFixed(2);
@@ -25,6 +29,9 @@
 				return 'bg-yellow-100 text-yellow-800';
 		}
 	}
+
+	// Get selected project name for display
+	const selectedProject = $derived(data.projects.find((p) => p.id === selectedProjectId));
 </script>
 
 <svelte:head>
@@ -32,6 +39,55 @@
 </svelte:head>
 
 <div class="space-y-6">
+	<!-- Voice Ordering Section - Main Feature -->
+	{#if data.projects.length > 0}
+		<div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg shadow-lg p-6 border border-blue-100">
+			<div class="text-center mb-4">
+				<h2 class="text-2xl font-bold text-gray-900">Quick Voice Order</h2>
+				<p class="mt-1 text-gray-600">
+					Tap the mic and tell me what you need
+				</p>
+			</div>
+
+			<!-- Project selector (if multiple projects) -->
+			{#if data.projects.length > 1}
+				<div class="mb-4">
+					<label for="voice-project" class="block text-sm font-medium text-gray-700 mb-1">
+						Order for project:
+					</label>
+					<select
+						id="voice-project"
+						bind:value={selectedProjectId}
+						class="w-full px-3 py-2 border border-gray-300 rounded-lg text-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+					>
+						{#each data.projects as project (project.id)}
+							<option value={project.id}>{project.name}</option>
+						{/each}
+					</select>
+				</div>
+			{:else if selectedProject}
+				<p class="text-center text-sm text-gray-500 mb-4">
+					Ordering for: <span class="font-medium">{selectedProject.name}</span>
+				</p>
+			{/if}
+
+			<!-- Voice mic button -->
+			<VoiceMicButton projectId={selectedProjectId} />
+
+			<!-- Alternative: Browse catalog -->
+			<div class="mt-6 pt-4 border-t border-blue-200 text-center">
+				<span class="text-gray-500 text-sm">or</span>
+				<a
+					href="/worker/order{selectedProjectId ? `?project=${selectedProjectId}` : ''}"
+					class="ml-2 text-blue-600 hover:text-blue-800 font-medium"
+				>
+					Browse the catalog
+				</a>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Welcome card -->
 	<div class="bg-white rounded-lg shadow p-6">
 		<h2 class="text-2xl font-bold text-gray-900">Welcome, {data.user.username}!</h2>
 		<p class="mt-2 text-gray-600">
@@ -42,7 +98,7 @@
 				href="/worker/order"
 				class="mt-4 inline-block bg-blue-600 text-white py-3 px-6 rounded-lg font-bold text-lg hover:bg-blue-700 active:scale-95 transition-all"
 			>
-				Order Products
+				Browse All Products
 			</a>
 		{:else}
 			<div class="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
