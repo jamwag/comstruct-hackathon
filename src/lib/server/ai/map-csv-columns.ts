@@ -103,7 +103,12 @@ Return ONLY valid JSON array, no other text.`;
 
 	let mappings: ColumnMapping[];
 	try {
-		mappings = JSON.parse(content.text);
+		let jsonText = content.text.trim();
+		// Strip markdown code blocks if present
+		if (jsonText.startsWith('```')) {
+			jsonText = jsonText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+		}
+		mappings = JSON.parse(jsonText);
 		if (!Array.isArray(mappings)) {
 			throw new Error('Response is not an array');
 		}

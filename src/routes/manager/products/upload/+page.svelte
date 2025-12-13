@@ -6,7 +6,7 @@
 
 	let selectedFile = $state<File | null>(null);
 	let selectedSupplierId = $state('');
-	let step = $state<'upload' | 'mapping' | 'done'>('upload');
+	let step = $state<'upload' | 'mapping' | 'pdf-preview' | 'done'>('upload');
 	let isClassifying = $state(false);
 	let classificationResult = $state<{ classified: number; total: number } | null>(null);
 
@@ -32,9 +32,9 @@
 	// AI mappings display
 	let showAiSuggestions = $state(true);
 
-	// Apply AI suggestions when preview is loaded
+	// Apply AI suggestions when preview is loaded (Excel/CSV flow)
 	$effect(() => {
-		if (form?.headers) {
+		if (form?.headers && form?.isPdf === false) {
 			const headers = form.headers as string[];
 			const suggestions = form.suggestedMappings || [];
 
@@ -89,6 +89,13 @@
 				findSuggestion('supplierSku') || headers.find((h) => /lieferant.*sku|supplier.*id/i.test(h)) || '';
 
 			step = 'mapping';
+		}
+	});
+
+	// Handle PDF preview
+	$effect(() => {
+		if (form?.isPdf === true && form?.pdfProducts) {
+			step = 'pdf-preview';
 		}
 	});
 
@@ -159,6 +166,10 @@
 		return 'bg-gray-100 text-gray-800';
 	}
 
+	function formatPrice(cents: number): string {
+		return (cents / 100).toFixed(2);
+	}
+
 	// Get main categories only (no parent)
 	const mainCategories = $derived(data.categories.filter((c) => !c.parentId));
 </script>
@@ -173,7 +184,7 @@
 	</div>
 
 	<div class="bg-white rounded-lg shadow p-6">
-		<h2 class="text-xl font-bold text-gray-900 mb-6">Import Products from Excel</h2>
+		<h2 class="text-xl font-bold text-gray-900 mb-6">Import Products</h2>
 
 		{#if step === 'upload'}
 			{#if data.suppliers.length === 0}
@@ -201,16 +212,17 @@
 					</div>
 
 					<div>
-						<label for="file" class="block text-sm font-medium text-gray-700">Excel File (.xlsx, .csv)</label>
+						<label for="file" class="block text-sm font-medium text-gray-700">File (Excel, CSV, or PDF)</label>
 						<input
 							id="file"
 							name="file"
 							type="file"
 							required
-							accept=".xlsx,.xls,.csv"
+							accept=".xlsx,.xls,.csv,.pdf"
 							onchange={handleFileChange}
 							class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
 						/>
+						<p class="mt-1 text-xs text-gray-500">PDFs will be processed with AI to extract product data</p>
 					</div>
 
 					{#if form?.message}
@@ -226,6 +238,93 @@
 					</button>
 				</form>
 			{/if}
+
+		{:else if step === 'pdf-preview' && form?.pdfProducts}
+			<div class="space-y-6">
+				<!-- PDF AI Banner -->
+				<div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+					<div class="flex items-center gap-2">
+						<svg class="w-5 h-5 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+							<path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
+							<path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/>
+						</svg>
+						<span class="font-medium text-purple-800">AI Extracted from PDF</span>
+						{#if form.confidence}
+							<span class="text-xs px-2 py-0.5 rounded {getConfidenceColor(form.confidence)}">
+								{Math.round(form.confidence * 100)}% confidence
+							</span>
+						{/if}
+					</div>
+					{#if form.supplierName}
+						<p class="text-sm text-purple-700 mt-1">Detected supplier: {form.supplierName}</p>
+					{/if}
+				</div>
+
+				<div class="bg-gray-50 rounded-lg p-4">
+					<p class="text-sm text-gray-600">
+						Found <strong>{form.totalRows}</strong> products. Review and import.
+					</p>
+				</div>
+
+				<!-- Extracted products table -->
+				<div class="overflow-x-auto">
+					<table class="min-w-full text-sm border">
+						<thead class="bg-gray-100">
+							<tr>
+								<th class="px-3 py-2 text-left border">SKU</th>
+								<th class="px-3 py-2 text-left border">Name</th>
+								<th class="px-3 py-2 text-left border">Unit</th>
+								<th class="px-3 py-2 text-right border">Price</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each form.pdfProducts as product, i (i)}
+								<tr class="hover:bg-gray-50">
+									<td class="px-3 py-2 border font-mono text-gray-500">{product.sku}</td>
+									<td class="px-3 py-2 border">{product.name}</td>
+									<td class="px-3 py-2 border">{product.unit}</td>
+									<td class="px-3 py-2 border text-right">CHF {formatPrice(product.pricePerUnit)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+
+				<form method="post" action="?/importPdf" use:enhance class="space-y-4">
+					<input type="hidden" name="supplierId" value={form.supplierId} />
+					<input type="hidden" name="products" value={JSON.stringify(form.pdfProducts)} />
+
+					<div>
+						<label for="pdfCategoryId" class="block text-sm font-medium text-gray-700">Category (all products)</label>
+						<select id="pdfCategoryId" name="categoryId" bind:value={categoryId} class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2">
+							<option value="">None (use AI classification later)</option>
+							{#each mainCategories as category (category.id)}
+								<option value={category.id}>{category.name}</option>
+							{/each}
+						</select>
+					</div>
+
+					{#if form?.message}
+						<p class="text-red-600 text-sm">{form.message}</p>
+					{/if}
+
+					<div class="flex gap-3">
+						<button
+							type="submit"
+							class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+						>
+							Import {form.totalRows} Products
+						</button>
+						<button
+							type="button"
+							onclick={resetForm}
+							class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+						>
+							Start Over
+						</button>
+					</div>
+				</form>
+			</div>
 
 		{:else if step === 'mapping' && form?.headers}
 			<div class="space-y-6">

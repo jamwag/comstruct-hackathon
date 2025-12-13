@@ -46,7 +46,7 @@
 				href="/manager/products/upload"
 				class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
 			>
-				Import from Excel
+				Import Products
 			</a>
 		</div>
 	</div>
@@ -61,7 +61,7 @@
 
 	{#if data.products.length === 0}
 		<div class="bg-white rounded-lg shadow p-6 text-center">
-			<p class="text-gray-500">No products yet. Import products from a supplier Excel file.</p>
+			<p class="text-gray-500">No products yet. Import products from Excel, CSV, or PDF files.</p>
 		</div>
 	{:else}
 		<div class="bg-white rounded-lg shadow overflow-hidden">

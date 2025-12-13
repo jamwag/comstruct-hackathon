@@ -5,8 +5,8 @@ import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import type { Actions, PageServerLoad } from './$types';
 import * as XLSX from 'xlsx';
-import { mapCsvColumns, classifyProduct } from '$lib/server/ai';
-import type { ColumnMapping } from '$lib/server/ai';
+import { mapCsvColumns, classifyProduct, extractProductsFromPdf } from '$lib/server/ai';
+import type { ColumnMapping, ExtractedProduct } from '$lib/server/ai';
 
 export const load: PageServerLoad = async () => {
 	const suppliers = await db.select().from(table.supplier).orderBy(table.supplier.name);
@@ -40,8 +40,32 @@ export const actions: Actions = {
 			return fail(400, { message: 'Please select a supplier' });
 		}
 
+		const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+
 		try {
 			const buffer = await file.arrayBuffer();
+
+			// Handle PDF files with AI extraction
+			if (isPdf) {
+				const base64 = Buffer.from(buffer).toString('base64');
+				const extraction = await extractProductsFromPdf(base64);
+
+				if (extraction.products.length === 0) {
+					return fail(400, { message: 'No products found in the PDF. Please check the document format.' });
+				}
+
+				return {
+					success: true,
+					isPdf: true,
+					pdfProducts: extraction.products,
+					supplierName: extraction.supplierName,
+					totalRows: extraction.products.length,
+					supplierId,
+					confidence: extraction.confidence
+				};
+			}
+
+			// Handle Excel/CSV files
 			const workbook = XLSX.read(buffer, { type: 'array' });
 			const sheetName = workbook.SheetNames[0];
 			const sheet = workbook.Sheets[sheetName];
@@ -72,6 +96,7 @@ export const actions: Actions = {
 
 			return {
 				success: true,
+				isPdf: false,
 				headers,
 				preview,
 				totalRows: data.length,
@@ -82,7 +107,9 @@ export const actions: Actions = {
 		} catch (err) {
 			console.error('Error parsing file:', err);
 			return fail(400, {
-				message: 'Error parsing file. Make sure it is a valid Excel or CSV file.'
+				message: isPdf
+					? 'Error extracting products from PDF. Please try again or use an Excel file.'
+					: 'Error parsing file. Make sure it is a valid Excel or CSV file.'
 			});
 		}
 	},
@@ -310,6 +337,64 @@ export const actions: Actions = {
 			total: productIds.length,
 			results
 		};
+	},
+
+	importPdf: async ({ request }) => {
+		const formData = await request.formData();
+		const productsJson = formData.get('products') as string;
+		const supplierId = formData.get('supplierId') as string;
+		const categoryId = formData.get('categoryId') as string;
+
+		if (!productsJson || !supplierId) {
+			return fail(400, { message: 'Missing required fields' });
+		}
+
+		let products: ExtractedProduct[];
+		try {
+			products = JSON.parse(productsJson);
+		} catch {
+			return fail(400, { message: 'Invalid product data' });
+		}
+
+		try {
+			let imported = 0;
+			const importedProductIds: string[] = [];
+
+			for (const product of products) {
+				const productId = generateId();
+
+				await db.insert(table.product).values({
+					id: productId,
+					supplierId,
+					categoryId: categoryId || null,
+					subcategoryId: null,
+					sku: product.sku,
+					name: product.name,
+					description: product.description || null,
+					unit: product.unit || 'pcs',
+					pricePerUnit: product.pricePerUnit, // Already in cents from extraction
+					manufacturer: null,
+					packagingUnit: null,
+					hazardous: false,
+					consumableType: null,
+					minOrderQty: 1,
+					supplierSku: product.sku
+				});
+
+				importedProductIds.push(productId);
+				imported++;
+			}
+
+			return {
+				success: true,
+				imported,
+				skipped: 0,
+				importedProductIds
+			};
+		} catch (err) {
+			console.error('Error importing PDF products:', err);
+			return fail(500, { message: 'Error importing products' });
+		}
 	}
 };
 

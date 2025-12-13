@@ -118,7 +118,7 @@ Return ONLY valid JSON, no other text.`;
 		throw new Error('Unexpected response type from Claude');
 	}
 
-	// Parse the JSON response
+	// Parse the JSON response - strip markdown code blocks if present
 	let parsed: {
 		category?: string;
 		categoryConfidence?: number;
@@ -130,7 +130,12 @@ Return ONLY valid JSON, no other text.`;
 	};
 
 	try {
-		parsed = JSON.parse(content.text);
+		let jsonText = content.text.trim();
+		// Strip markdown code blocks if present
+		if (jsonText.startsWith('```')) {
+			jsonText = jsonText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+		}
+		parsed = JSON.parse(jsonText);
 	} catch {
 		console.error('Failed to parse AI response:', content.text);
 		// Return default classification on parse error

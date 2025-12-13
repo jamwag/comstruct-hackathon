@@ -4,3 +4,6 @@ export type { ClassificationResult, CategoryInfo, ConstructionTypeInfo } from '.
 
 export { mapCsvColumns, applyMappings } from './map-csv-columns';
 export type { ColumnMapping, MappingResult } from './map-csv-columns';
+
+export { extractProductsFromPdf } from './extract-pdf-products';
+export type { ExtractedProduct, PdfExtractionResult } from './extract-pdf-products';
