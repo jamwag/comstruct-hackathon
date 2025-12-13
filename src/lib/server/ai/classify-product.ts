@@ -45,21 +45,53 @@ function buildCategoryTree(categories: CategoryInfo[]): string {
 	return lines.join('\n');
 }
 
+function normalizeForMatch(str: string): string {
+	return str
+		.toLowerCase()
+		.replace(/&/g, 'and')
+		.replace(/[^a-z0-9]/g, ''); // Remove all non-alphanumeric
+}
+
 function findCategoryByName(
 	name: string | null,
 	categories: CategoryInfo[]
 ): CategoryInfo | undefined {
 	if (!name) return undefined;
-	const lower = name.toLowerCase();
-	return categories.find((c) => c.name.toLowerCase() === lower);
+
+	const normalizedInput = normalizeForMatch(name);
+
+	// First try exact match
+	const exactMatch = categories.find((c) => c.name.toLowerCase() === name.toLowerCase());
+	if (exactMatch) return exactMatch;
+
+	// Then try normalized match
+	const normalizedMatch = categories.find(
+		(c) => normalizeForMatch(c.name) === normalizedInput
+	);
+	if (normalizedMatch) return normalizedMatch;
+
+	// Try partial match as fallback
+	const partialMatch = categories.find(
+		(c) =>
+			normalizedInput.includes(normalizeForMatch(c.name)) ||
+			normalizeForMatch(c.name).includes(normalizedInput)
+	);
+
+	return partialMatch;
 }
 
 function findConstructionTypeByName(
 	name: string,
 	types: ConstructionTypeInfo[]
 ): ConstructionTypeInfo | undefined {
-	const lower = name.toLowerCase();
-	return types.find((ct) => ct.name.toLowerCase() === lower);
+	const normalizedInput = normalizeForMatch(name);
+
+	// First try exact match
+	const exactMatch = types.find((ct) => ct.name.toLowerCase() === name.toLowerCase());
+	if (exactMatch) return exactMatch;
+
+	// Then try normalized match
+	return types.find((ct) => normalizeForMatch(ct.name) === normalizedInput);
 }
 
 export async function classifyProduct(
@@ -155,6 +187,15 @@ Return ONLY valid JSON, no other text.`;
 	// Map names back to IDs
 	const mainCategory = findCategoryByName(parsed.category || null, categories);
 	const subcategory = findCategoryByName(parsed.subcategory || null, categories);
+
+	// Debug logging
+	console.log('AI Classification result:', {
+		productName: name,
+		aiCategory: parsed.category,
+		aiSubcategory: parsed.subcategory,
+		matchedCategory: mainCategory?.name || 'NOT FOUND',
+		matchedSubcategory: subcategory?.name || 'NOT FOUND'
+	});
 
 	const mappedConstructionTypes = (parsed.constructionTypes || [])
 		.map((ctName) => {
