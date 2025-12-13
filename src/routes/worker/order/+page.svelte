@@ -96,9 +96,10 @@
 <div class="space-y-4">
 	<!-- Header -->
 	<div class="bg-white rounded-lg shadow p-4">
-		<h2 class="text-xl font-bold text-gray-900">Order Products</h2>
+		<h2 class="text-xl font-bold text-gray-900">Order Site Supplies</h2>
+		<p class="text-sm text-gray-500 mt-1">Everyday materials for your project</p>
 		{#if data.selectedProject}
-			<p class="text-sm text-gray-500 mt-1">Project: {data.selectedProject.name}</p>
+			<p class="text-xs text-gray-400 mt-1">Project: {data.selectedProject.name}</p>
 		{/if}
 	</div>
 
@@ -109,6 +110,14 @@
 			<p class="text-yellow-700 text-sm mt-1">Please contact your manager to be assigned to a project.</p>
 		</div>
 	{:else if !data.categoryId}
+		<!-- Contextual hint -->
+		<div class="flex items-center gap-2 text-sm text-blue-700 bg-blue-50 p-3 rounded-lg border border-blue-100">
+			<svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+				<path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.476.859h4.002z" />
+			</svg>
+			<span>Browse everyday site supplies by category</span>
+		</div>
+
 		<!-- Step 1: Main Category Buttons -->
 		<div class="grid grid-cols-2 gap-4">
 			{#each data.mainCategories as category (category.id)}
@@ -116,8 +125,9 @@
 					href={buildUrl({ category: category.id, sub: null })}
 					class="aspect-square bg-blue-500 text-white rounded-xl flex flex-col items-center justify-center text-lg font-bold shadow-lg hover:bg-blue-600 active:scale-95 transition-all"
 				>
-					<span class="text-5xl mb-3">{category.icon}</span>
+					<span class="text-5xl mb-2">{category.icon}</span>
 					<span class="text-center px-2">{category.name}</span>
+					<span class="text-xs font-normal opacity-80 mt-1 px-2 text-center">{category.hint}</span>
 				</a>
 			{/each}
 		</div>

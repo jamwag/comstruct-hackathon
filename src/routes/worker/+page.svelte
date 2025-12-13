@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import VoiceMicButton from '$lib/components/voice/VoiceMicButton.svelte';
+	import CMaterialsInfoBanner from '$lib/components/CMaterialsInfoBanner.svelte';
 	import { selectedProjectId } from '$lib/stores/selectedProject';
 	import { cart } from '$lib/stores/cart';
 	import { page } from '$app/stores';
@@ -81,6 +82,9 @@
 			</p>
 		</div>
 	{:else}
+		<!-- C-Materials Info Banner -->
+		<CMaterialsInfoBanner threshold={selectedProject?.autoApprovalThreshold ? selectedProject.autoApprovalThreshold / 100 : 200} />
+
 		<!-- Voice Ordering Section - Main Feature (Enhanced) -->
 		<div
 			class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg shadow-lg p-6 border border-blue-100"

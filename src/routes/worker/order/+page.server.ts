@@ -71,14 +71,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		products = productRows;
 	}
 
-	// Category icons mapping
-	const categoryIcons: Record<string, string> = {
-		fastening: '🔩',
-		safety: '🦺',
-		tools: '🔧',
-		electrical: '⚡',
-		'coatings-chemicals': '🎨',
-		'site-general': '📦'
+	// Category metadata mapping (icons and hints for C-materials explanation)
+	const categoryMeta: Record<string, { icon: string; hint: string }> = {
+		fastening: { icon: '🔩', hint: 'Screws, anchors, tape' },
+		safety: { icon: '🦺', hint: 'PPE & workwear' },
+		tools: { icon: '🔧', hint: 'Small tools & bits' },
+		electrical: { icon: '⚡', hint: 'Cables & connectors' },
+		'coatings-chemicals': { icon: '🎨', hint: 'Paints & sealants' },
+		'site-general': { icon: '📦', hint: 'Signs & cleaning' }
 	};
 
 	return {
@@ -86,7 +86,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		selectedProject,
 		mainCategories: mainCategories.map((c) => ({
 			...c,
-			icon: categoryIcons[c.id] || '📦'
+			icon: categoryMeta[c.id]?.icon || '📦',
+			hint: categoryMeta[c.id]?.hint || 'Site supplies'
 		})),
 		subcategories,
 		products,

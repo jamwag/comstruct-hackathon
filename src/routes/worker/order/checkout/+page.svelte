@@ -187,6 +187,24 @@
 			{/if}
 		</div>
 
+		<!-- Large Order Warning (Misuse Prevention) -->
+		{#if getTotal() > 50000}
+			<div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
+				<div class="flex items-start gap-3">
+					<svg class="w-6 h-6 text-orange-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+					</svg>
+					<div>
+						<p class="text-orange-800 font-medium">This is a larger order</p>
+						<p class="text-orange-700 text-sm mt-1">
+							This tool is for everyday site supplies. For big project materials
+							(steel, concrete, windows, equipment), please contact your project manager.
+						</p>
+					</div>
+				</div>
+			</div>
+		{/if}
+
 		<!-- Priority and Notes Section -->
 		<div class="bg-white rounded-lg shadow p-4 space-y-4">
 			<!-- Priority Toggle -->
