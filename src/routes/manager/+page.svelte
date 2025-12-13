@@ -17,18 +17,18 @@
 	</div>
 
 	<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-		<div class="bg-white rounded-lg shadow p-6">
-			<div class="text-sm font-medium text-gray-500">Pending Approvals</div>
-			<div class="mt-2 text-3xl font-bold text-gray-900">0</div>
-		</div>
-		<div class="bg-white rounded-lg shadow p-6">
-			<div class="text-sm font-medium text-gray-500">Orders This Month</div>
-			<div class="mt-2 text-3xl font-bold text-gray-900">0</div>
-		</div>
-		<div class="bg-white rounded-lg shadow p-6">
-			<div class="text-sm font-medium text-gray-500">Total Spend</div>
-			<div class="mt-2 text-3xl font-bold text-gray-900">CHF 0</div>
-		</div>
+		<a href="/manager/projects" class="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+			<div class="text-sm font-medium text-gray-500">Projects</div>
+			<div class="mt-2 text-3xl font-bold text-gray-900">{data.counts.projects}</div>
+		</a>
+		<a href="/manager/suppliers" class="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+			<div class="text-sm font-medium text-gray-500">Suppliers</div>
+			<div class="mt-2 text-3xl font-bold text-gray-900">{data.counts.suppliers}</div>
+		</a>
+		<a href="/manager/products" class="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+			<div class="text-sm font-medium text-gray-500">Products</div>
+			<div class="mt-2 text-3xl font-bold text-gray-900">{data.counts.products}</div>
+		</a>
 	</div>
 
 	<div class="bg-white rounded-lg shadow">
