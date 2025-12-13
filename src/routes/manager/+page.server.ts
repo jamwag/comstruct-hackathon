@@ -1,14 +1,49 @@
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
-import { count, sum, eq, desc, and } from 'drizzle-orm';
+import { count, sum, eq, desc, and, inArray } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+	const user = locals.user!;
 	const projectId = url.searchParams.get('project');
 
-	// Resource counts
-	const [supplierCount] = await db.select({ count: count() }).from(table.supplier);
-	const [productCount] = await db.select({ count: count() }).from(table.product);
+	// For project managers, get their assigned project IDs
+	let allowedProjectIds: string[] | null = null;
+	if (user.role === 'project_manager') {
+		const assignments = await db
+			.select({ projectId: table.projectManagerAssignment.projectId })
+			.from(table.projectManagerAssignment)
+			.where(eq(table.projectManagerAssignment.managerId, user.id));
+		allowedProjectIds = assignments.map((a) => a.projectId);
+	}
+
+	// Helper to build project filter condition
+	const getProjectFilter = (statusCondition?: ReturnType<typeof eq>) => {
+		const conditions: ReturnType<typeof eq>[] = [];
+		if (statusCondition) conditions.push(statusCondition);
+
+		if (projectId) {
+			// Verify PM has access if they're filtering by project
+			if (allowedProjectIds && !allowedProjectIds.includes(projectId)) {
+				return null; // No access
+			}
+			conditions.push(eq(table.order.projectId, projectId));
+		} else if (allowedProjectIds && allowedProjectIds.length > 0) {
+			conditions.push(inArray(table.order.projectId, allowedProjectIds));
+		} else if (allowedProjectIds && allowedProjectIds.length === 0) {
+			return null; // PM with no projects
+		}
+
+		return conditions.length > 0 ? and(...conditions) : undefined;
+	};
+
+	// Resource counts (only show to procurement)
+	let supplierCount = { count: 0 };
+	let productCount = { count: 0 };
+	if (user.role === 'manager') {
+		[supplierCount] = await db.select({ count: count() }).from(table.supplier);
+		[productCount] = await db.select({ count: count() }).from(table.product);
+	}
 
 	// Get selected project info
 	let selectedProject = null;
@@ -20,51 +55,44 @@ export const load: PageServerLoad = async ({ url }) => {
 		selectedProject = project || null;
 	}
 
-	// Order analytics - filtered by project if selected
-	const orderFilter = projectId
-		? and(eq(table.order.status, 'approved'), eq(table.order.projectId, projectId))
-		: eq(table.order.status, 'approved');
+	// Order analytics - filtered by project and PM access
+	const approvedFilter = getProjectFilter(eq(table.order.status, 'approved'));
+	const [approvedSpend] = approvedFilter !== null
+		? await db.select({ total: sum(table.order.totalCents) }).from(table.order).where(approvedFilter)
+		: [{ total: 0 }];
 
-	const [approvedSpend] = await db
-		.select({ total: sum(table.order.totalCents) })
-		.from(table.order)
-		.where(orderFilter);
+	const pendingFilter = getProjectFilter(eq(table.order.status, 'pending'));
+	const [pendingOrders] = pendingFilter !== null
+		? await db.select({ count: count(), total: sum(table.order.totalCents) }).from(table.order).where(pendingFilter)
+		: [{ count: 0, total: 0 }];
 
-	const pendingFilter = projectId
-		? and(eq(table.order.status, 'pending'), eq(table.order.projectId, projectId))
-		: eq(table.order.status, 'pending');
+	const totalFilter = getProjectFilter();
+	const [totalOrders] = totalFilter !== null
+		? await db.select({ count: count() }).from(table.order).where(totalFilter)
+		: [{ count: 0 }];
 
-	const [pendingOrders] = await db
-		.select({
-			count: count(),
-			total: sum(table.order.totalCents)
-		})
-		.from(table.order)
-		.where(pendingFilter);
+	// Recent orders (last 10) - filtered by project and PM access
+	let recentOrders: Array<{
+		order: typeof table.order.$inferSelect;
+		project: typeof table.project.$inferSelect;
+		worker: typeof table.user.$inferSelect;
+	}> = [];
 
-	const totalFilter = projectId ? eq(table.order.projectId, projectId) : undefined;
-	const [totalOrders] = await db
-		.select({ count: count() })
-		.from(table.order)
-		.where(totalFilter);
-
-	// Recent orders (last 10) - filtered by project if selected
-	const recentOrdersQuery = db
-		.select({
-			order: table.order,
-			project: table.project,
-			worker: table.user
-		})
-		.from(table.order)
-		.innerJoin(table.project, eq(table.order.projectId, table.project.id))
-		.innerJoin(table.user, eq(table.order.workerId, table.user.id));
-
-	const recentOrders = projectId
-		? await recentOrdersQuery
-				.where(eq(table.order.projectId, projectId))
-				.orderBy(desc(table.order.createdAt))
-				.limit(10)
-		: await recentOrdersQuery.orderBy(desc(table.order.createdAt)).limit(10);
+	const recentFilter = getProjectFilter();
+	if (recentFilter !== null) {
+		recentOrders = await db
+			.select({
+				order: table.order,
+				project: table.project,
+				worker: table.user
+			})
+			.from(table.order)
+			.innerJoin(table.project, eq(table.order.projectId, table.project.id))
+			.innerJoin(table.user, eq(table.order.workerId, table.user.id))
+			.where(recentFilter)
+			.orderBy(desc(table.order.createdAt))
+			.limit(10);
+	}
 
 	return {
 		counts: {

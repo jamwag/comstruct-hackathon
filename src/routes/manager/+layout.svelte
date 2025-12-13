@@ -53,6 +53,14 @@
 			>
 				Dashboard
 			</a>
+			<a
+				href="/manager/projects"
+				class="block px-3 py-2 rounded-md font-medium {isActive('/manager/projects')
+					? 'bg-blue-50 text-blue-700'
+					: 'text-gray-700 hover:bg-gray-100'}"
+			>
+				Projects
+			</a>
 			{#if isProcurement}
 				<a
 					href="/manager/suppliers"

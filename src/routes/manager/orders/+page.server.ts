@@ -1,27 +1,52 @@
 import { fail } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, inArray } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+	const user = locals.user!;
 	const statusFilter = url.searchParams.get('status') || 'pending';
 	const projectId = url.searchParams.get('project');
 
-	// Build filter conditions
-	let whereCondition;
-	if (projectId && statusFilter !== 'all') {
-		whereCondition = and(
-			eq(table.order.projectId, projectId),
-			eq(table.order.status, statusFilter as 'pending' | 'approved' | 'rejected')
-		);
-	} else if (projectId) {
-		whereCondition = eq(table.order.projectId, projectId);
-	} else if (statusFilter !== 'all') {
-		whereCondition = eq(table.order.status, statusFilter as 'pending' | 'approved' | 'rejected');
+	// For project managers, get their assigned project IDs
+	let allowedProjectIds: string[] | null = null;
+	if (user.role === 'project_manager') {
+		const assignments = await db
+			.select({ projectId: table.projectManagerAssignment.projectId })
+			.from(table.projectManagerAssignment)
+			.where(eq(table.projectManagerAssignment.managerId, user.id));
+		allowedProjectIds = assignments.map((a) => a.projectId);
+
+		// If PM has no assigned projects, return empty
+		if (allowedProjectIds.length === 0) {
+			return { orders: [], statusFilter, projectId };
+		}
 	}
 
-	// Get all orders with related data
+	// Build filter conditions
+	const conditions: ReturnType<typeof eq>[] = [];
+
+	// Project filter (either specific or allowed projects for PM)
+	if (projectId) {
+		// If PM, verify they have access to this project
+		if (allowedProjectIds && !allowedProjectIds.includes(projectId)) {
+			return { orders: [], statusFilter, projectId };
+		}
+		conditions.push(eq(table.order.projectId, projectId));
+	} else if (allowedProjectIds) {
+		// PM without specific project filter - show all their assigned projects
+		conditions.push(inArray(table.order.projectId, allowedProjectIds));
+	}
+
+	// Status filter
+	if (statusFilter !== 'all') {
+		conditions.push(eq(table.order.status, statusFilter as 'pending' | 'approved' | 'rejected'));
+	}
+
+	const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
+
+	// Get orders with related data
 	const ordersQuery = await db
 		.select({
 			order: table.order,
