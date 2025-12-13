@@ -1,23 +1,25 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import type { ActionData } from './$types';
+	import type { ActionData, PageData } from './$types';
 
-	let { form }: { form: ActionData } = $props();
+	let { data, form }: { data: PageData; form: ActionData } = $props();
 </script>
 
 <svelte:head>
-	<title>Add Supplier - ComStruct</title>
+	<title>Edit {data.supplier.name} - ComStruct</title>
 </svelte:head>
 
 <div class="max-w-xl">
 	<div class="mb-6">
-		<a href="/manager/suppliers" class="text-blue-600 hover:underline text-sm">&larr; Back to Suppliers</a>
+		<a href="/manager/suppliers" class="text-blue-600 hover:underline text-sm"
+			>&larr; Back to Suppliers</a
+		>
 	</div>
 
 	<div class="bg-white rounded-lg shadow p-6">
-		<h2 class="text-xl font-bold text-gray-900 mb-6">Add New Supplier</h2>
+		<h2 class="text-xl font-bold text-gray-900 mb-6">Edit Supplier</h2>
 
-		<form method="post" use:enhance class="space-y-4">
+		<form method="post" action="?/update" use:enhance class="space-y-4">
 			<div>
 				<label for="name" class="block text-sm font-medium text-gray-700">Supplier Name</label>
 				<input
@@ -25,33 +27,38 @@
 					name="name"
 					type="text"
 					required
-					placeholder="e.g., Würth, Hilti, Bauhaus"
+					value={data.supplier.name}
 					class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
 				/>
 			</div>
 
 			<div>
-				<label for="contactEmail" class="block text-sm font-medium text-gray-700">Contact Email (optional)</label>
+				<label for="contactEmail" class="block text-sm font-medium text-gray-700"
+					>Contact Email</label
+				>
 				<input
 					id="contactEmail"
 					name="contactEmail"
 					type="email"
-					placeholder="e.g., orders@supplier.com"
+					value={data.supplier.contactEmail || ''}
 					class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
 				/>
 			</div>
 
 			<div>
-				<label for="shopUrl" class="block text-sm font-medium text-gray-700">External Shop URL (optional)</label>
+				<label for="shopUrl" class="block text-sm font-medium text-gray-700"
+					>External Shop URL (PunchOut)</label
+				>
 				<input
 					id="shopUrl"
 					name="shopUrl"
 					type="url"
-					placeholder="e.g., https://supplier-shop.example.com"
+					placeholder="https://supplier-shop.example.com"
+					value={data.supplier.shopUrl || ''}
 					class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
 				/>
 				<p class="mt-1 text-xs text-gray-500">
-					PunchOut catalog URL. Workers will be redirected here to browse products.
+					The supplier's external catalog URL. Workers will be redirected here to browse products.
 				</p>
 			</div>
 
@@ -64,7 +71,7 @@
 					type="submit"
 					class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
 				>
-					Add Supplier
+					Save Changes
 				</button>
 				<a
 					href="/manager/suppliers"

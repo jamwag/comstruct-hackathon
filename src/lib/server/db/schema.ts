@@ -77,6 +77,7 @@ export const supplier = pgTable('supplier', {
 	id: text('id').primaryKey(),
 	name: text('name').notNull(),
 	contactEmail: text('contact_email'),
+	shopUrl: text('shop_url'), // External PunchOut catalog URL
 	createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull()
 });
 
@@ -168,12 +169,14 @@ export const orderItem = pgTable('order_item', {
 	orderId: text('order_id')
 		.references(() => order.id, { onDelete: 'cascade' })
 		.notNull(),
-	productId: text('product_id')
-		.references(() => product.id)
-		.notNull(),
+	productId: text('product_id').references(() => product.id), // nullable for PunchOut items
 	quantity: integer('quantity').notNull(),
 	pricePerUnit: integer('price_per_unit').notNull(), // snapshot at order time
-	totalCents: integer('total_cents').notNull()
+	totalCents: integer('total_cents').notNull(),
+	// PunchOut item fields (when productId is null)
+	punchoutSku: text('punchout_sku'),
+	punchoutName: text('punchout_name'),
+	punchoutUnit: text('punchout_unit')
 });
 
 export type OrderItem = typeof orderItem.$inferSelect;

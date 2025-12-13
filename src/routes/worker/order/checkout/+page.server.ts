@@ -47,6 +47,8 @@ export const actions: Actions = {
 		let cartItems: Array<{
 			productId: string;
 			name: string;
+			sku?: string;
+			unit?: string;
 			quantity: number;
 			pricePerUnit: number;
 		}>;
@@ -103,13 +105,19 @@ export const actions: Actions = {
 
 		// Create order items
 		for (const item of cartItems) {
+			const isPunchoutItem = item.productId.startsWith('punchout-');
+
 			await db.insert(table.orderItem).values({
 				id: generateId(),
 				orderId,
-				productId: item.productId,
+				productId: isPunchoutItem ? null : item.productId,
 				quantity: item.quantity,
 				pricePerUnit: item.pricePerUnit,
-				totalCents: item.pricePerUnit * item.quantity
+				totalCents: item.pricePerUnit * item.quantity,
+				// PunchOut item details
+				punchoutSku: isPunchoutItem ? item.sku || item.productId.replace('punchout-', '') : null,
+				punchoutName: isPunchoutItem ? item.name : null,
+				punchoutUnit: isPunchoutItem ? item.unit || 'EA' : null
 			});
 		}
 

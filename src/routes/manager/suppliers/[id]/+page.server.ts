@@ -1,15 +1,21 @@
-import { fail, redirect } from '@sveltejs/kit';
-import { encodeBase32LowerCase } from '@oslojs/encoding';
+import { error, fail, redirect } from '@sveltejs/kit';
+import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async () => {
-	return {};
+export const load: PageServerLoad = async ({ params }) => {
+	const [supplier] = await db.select().from(table.supplier).where(eq(table.supplier.id, params.id));
+
+	if (!supplier) {
+		throw error(404, 'Supplier not found');
+	}
+
+	return { supplier };
 };
 
 export const actions: Actions = {
-	default: async ({ request }) => {
+	update: async ({ params, request }) => {
 		const formData = await request.formData();
 		const name = formData.get('name');
 		const contactEmail = formData.get('contactEmail');
@@ -28,20 +34,16 @@ export const actions: Actions = {
 			}
 		}
 
-		const supplierId = generateId();
-
-		await db.insert(table.supplier).values({
-			id: supplierId,
-			name: name.trim(),
-			contactEmail: typeof contactEmail === 'string' && contactEmail.trim() ? contactEmail.trim() : null,
-			shopUrl: typeof shopUrl === 'string' && shopUrl.trim() ? shopUrl.trim() : null
-		});
+		await db
+			.update(table.supplier)
+			.set({
+				name: name.trim(),
+				contactEmail:
+					typeof contactEmail === 'string' && contactEmail.trim() ? contactEmail.trim() : null,
+				shopUrl: typeof shopUrl === 'string' && shopUrl.trim() ? shopUrl.trim() : null
+			})
+			.where(eq(table.supplier.id, params.id));
 
 		throw redirect(302, '/manager/suppliers');
 	}
 };
-
-function generateId() {
-	const bytes = crypto.getRandomValues(new Uint8Array(15));
-	return encodeBase32LowerCase(bytes);
-}

@@ -35,7 +35,13 @@
 							Contact Email
 						</th>
 						<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+							Shop URL
+						</th>
+						<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
 							Added
+						</th>
+						<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+							Actions
 						</th>
 					</tr>
 				</thead>
@@ -48,8 +54,31 @@
 							<td class="px-6 py-4 whitespace-nowrap text-gray-500">
 								{supplier.contactEmail || '-'}
 							</td>
+							<td class="px-6 py-4 text-gray-500 max-w-xs">
+								{#if supplier.shopUrl}
+									<a
+										href={supplier.shopUrl}
+										target="_blank"
+										rel="noopener noreferrer"
+										class="text-blue-600 hover:underline truncate block"
+										title={supplier.shopUrl}
+									>
+										{supplier.shopUrl}
+									</a>
+								{:else}
+									<span class="text-gray-400">-</span>
+								{/if}
+							</td>
 							<td class="px-6 py-4 whitespace-nowrap text-gray-500 text-sm">
 								{supplier.createdAt.toLocaleDateString()}
+							</td>
+							<td class="px-6 py-4 whitespace-nowrap">
+								<a
+									href="/manager/suppliers/{supplier.id}"
+									class="text-blue-600 hover:underline text-sm"
+								>
+									Edit
+								</a>
 							</td>
 						</tr>
 					{/each}
