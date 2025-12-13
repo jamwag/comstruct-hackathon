@@ -2,25 +2,32 @@
 	import type { PageData } from './$types';
 	import { cart, type CartItem } from '$lib/stores/cart';
 	import { page } from '$app/stores';
+	import { onDestroy, untrack } from 'svelte';
 
 	let { data }: { data: PageData } = $props();
 
-	// Track quantities for adding to cart
+	// Track quantities for adding to cart (initialized per product)
 	let quantities = $state<Record<string, number>>({});
 
-	// Get cart items for display
-	let cartItems = $state<CartItem[]>([]);
-	cart.subscribe((items) => {
-		cartItems = items;
+	// Initialize quantities when products change - use untrack to prevent infinite loop
+	$effect(() => {
+		// Track only data.products, not quantities
+		const productIds = data.products.map((p) => p.id);
+		untrack(() => {
+			for (const id of productIds) {
+				if (!(id in quantities)) {
+					quantities[id] = 1;
+				}
+			}
+		});
 	});
 
-	$effect(() => {
-		// Reset quantities when products change
-		quantities = {};
-		for (const product of data.products) {
-			quantities[product.id] = 1;
-		}
+	// Get cart items for display - use store subscription with cleanup
+	let cartItems = $state<CartItem[]>([]);
+	const unsubscribe = cart.subscribe((items) => {
+		cartItems = items;
 	});
+	onDestroy(unsubscribe);
 
 	function formatPrice(cents: number): string {
 		return (cents / 100).toFixed(2);

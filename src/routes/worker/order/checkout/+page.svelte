@@ -2,16 +2,17 @@
 	import { enhance } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
 	import { cart, type CartItem } from '$lib/stores/cart';
-	import { goto } from '$app/navigation';
+	import { onDestroy } from 'svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let cartItems = $state<CartItem[]>([]);
 	let isSubmitting = $state(false);
 
-	cart.subscribe((items) => {
+	const unsubscribe = cart.subscribe((items) => {
 		cartItems = items;
 	});
+	onDestroy(unsubscribe);
 
 	function formatPrice(cents: number): string {
 		return (cents / 100).toFixed(2);
