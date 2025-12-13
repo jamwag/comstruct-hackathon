@@ -20,18 +20,31 @@ export const load: PageServerLoad = async ({ locals }) => {
 	// Fetch order items and supplier responses for each order
 	const ordersWithItems = await Promise.all(
 		ordersWithProjects.map(async ({ order, project }) => {
-			const items = await db
+			const itemsRaw = await db
 				.select({
 					id: table.orderItem.id,
 					productId: table.orderItem.productId,
 					productName: table.product.name,
+					punchoutName: table.orderItem.punchoutName,
+					punchoutSku: table.orderItem.punchoutSku,
 					quantity: table.orderItem.quantity,
 					pricePerUnit: table.orderItem.pricePerUnit,
 					totalCents: table.orderItem.totalCents
 				})
 				.from(table.orderItem)
-				.innerJoin(table.product, eq(table.orderItem.productId, table.product.id))
+				.leftJoin(table.product, eq(table.orderItem.productId, table.product.id))
 				.where(eq(table.orderItem.orderId, order.id));
+
+			// Use punchoutName for punchout items, product name for regular items
+			const items = itemsRaw.map((item) => ({
+				id: item.id,
+				productId: item.productId,
+				productName: item.productName ?? item.punchoutName ?? 'Unknown Item',
+				punchoutSku: item.punchoutSku,
+				quantity: item.quantity,
+				pricePerUnit: item.pricePerUnit,
+				totalCents: item.totalCents
+			}));
 
 			// Fetch supplier responses for this order
 			const supplierResponses = await db
