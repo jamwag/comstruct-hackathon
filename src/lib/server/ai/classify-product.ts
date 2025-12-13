@@ -217,40 +217,149 @@ Return ONLY valid JSON, no other text.`;
 	};
 }
 
-// Batch classify multiple products
-export async function classifyProducts(
+// Batch classify multiple products in a single API call
+export async function classifyProductsBatch(
 	products: Array<{ id: string; name: string; description: string | null }>,
 	categories: CategoryInfo[],
 	constructionTypes: ConstructionTypeInfo[]
 ): Promise<Map<string, ClassificationResult>> {
 	const results = new Map<string, ClassificationResult>();
 
-	// Process products sequentially to avoid rate limits
-	for (const product of products) {
+	if (products.length === 0) return results;
+
+	const apiKey = env.ANTHROPIC_API_KEY;
+	if (!apiKey) {
+		throw new Error('ANTHROPIC_API_KEY is not set');
+	}
+
+	const anthropic = new Anthropic({ apiKey });
+	const categoryTree = buildCategoryTree(categories);
+	const constructionTypeList = constructionTypes.map((ct) => ct.name).join(', ');
+
+	// Process in batches of 20 products per API call
+	const BATCH_SIZE = 20;
+
+	for (let i = 0; i < products.length; i += BATCH_SIZE) {
+		const batch = products.slice(i, i + BATCH_SIZE);
+
+		const productList = batch
+			.map((p, idx) => `${idx + 1}. ID: "${p.id}" | Name: "${p.name}" | Description: "${p.description || 'None'}"`)
+			.join('\n');
+
+		const prompt = `You are a construction materials classification expert. Classify ALL the following products into appropriate categories.
+
+Products to classify:
+${productList}
+
+Available Categories (main category: subcategories):
+${categoryTree}
+
+Available Construction Types: ${constructionTypeList}
+
+Return a JSON array with one object per product, in the same order as listed above:
+[
+  {
+    "id": "product id from above",
+    "category": "exact main category name",
+    "categoryConfidence": 0.0-1.0,
+    "subcategory": "exact subcategory name or null",
+    "subcategoryConfidence": 0.0-1.0,
+    "constructionTypes": ["applicable construction types"],
+    "hazardous": true/false,
+    "consumableType": "single-use" or "reusable" or null
+  }
+]
+
+Rules:
+- Use exact category/subcategory names from the list
+- hazardous=true for chemicals, solvents, spray paints, safety-warning items
+- consumableType="single-use" for disposables, "reusable" for tools
+- Return ALL ${batch.length} products in the array
+
+Return ONLY valid JSON array, no other text.`;
+
 		try {
-			const classification = await classifyProduct(
-				product.name,
-				product.description,
-				categories,
-				constructionTypes
-			);
-			results.set(product.id, classification);
-		} catch (error) {
-			console.error(`Failed to classify product ${product.id}:`, error);
-			// Set default classification on error
-			results.set(product.id, {
-				categoryId: null,
-				categoryName: null,
-				categoryConfidence: 0,
-				subcategoryId: null,
-				subcategoryName: null,
-				subcategoryConfidence: 0,
-				constructionTypes: [],
-				hazardous: false,
-				consumableType: null
+			const response = await anthropic.messages.create({
+				model: 'claude-haiku-4-5-20251001',
+				max_tokens: 4000,
+				messages: [{ role: 'user', content: prompt }]
 			});
+
+			const content = response.content[0];
+			if (content.type !== 'text') {
+				throw new Error('Unexpected response type');
+			}
+
+			let jsonText = content.text.trim();
+			if (jsonText.startsWith('```')) {
+				jsonText = jsonText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+			}
+
+			const parsed: Array<{
+				id: string;
+				category?: string;
+				categoryConfidence?: number;
+				subcategory?: string | null;
+				subcategoryConfidence?: number;
+				constructionTypes?: string[];
+				hazardous?: boolean;
+				consumableType?: 'single-use' | 'reusable' | null;
+			}> = JSON.parse(jsonText);
+
+			// Map results back to product IDs
+			for (const item of parsed) {
+				const mainCategory = findCategoryByName(item.category || null, categories);
+				const subcategory = findCategoryByName(item.subcategory || null, categories);
+
+				const mappedConstructionTypes = (item.constructionTypes || [])
+					.map((ctName) => {
+						const ct = findConstructionTypeByName(ctName, constructionTypes);
+						return ct ? { id: ct.id, name: ct.name, confidence: 0.8 } : null;
+					})
+					.filter((ct): ct is { id: string; name: string; confidence: number } => ct !== null);
+
+				results.set(item.id, {
+					categoryId: mainCategory?.id || null,
+					categoryName: mainCategory?.name || null,
+					categoryConfidence: item.categoryConfidence || 0,
+					subcategoryId: subcategory?.id || null,
+					subcategoryName: subcategory?.name || null,
+					subcategoryConfidence: item.subcategoryConfidence || 0,
+					constructionTypes: mappedConstructionTypes,
+					hazardous: item.hazardous || false,
+					consumableType: item.consumableType || null
+				});
+			}
+
+			console.log(`Batch classified ${parsed.length} products in one API call`);
+		} catch (error) {
+			console.error('Batch classification failed:', error);
+			// Fall back to setting defaults for this batch
+			for (const product of batch) {
+				results.set(product.id, {
+					categoryId: null,
+					categoryName: null,
+					categoryConfidence: 0,
+					subcategoryId: null,
+					subcategoryName: null,
+					subcategoryConfidence: 0,
+					constructionTypes: [],
+					hazardous: false,
+					consumableType: null
+				});
+			}
 		}
 	}
 
 	return results;
+}
+
+// Legacy: Classify products one by one (kept for backwards compatibility)
+export async function classifyProducts(
+	products: Array<{ id: string; name: string; description: string | null }>,
+	categories: CategoryInfo[],
+	constructionTypes: ConstructionTypeInfo[]
+): Promise<Map<string, ClassificationResult>> {
+	// Use batch classification by default
+	return classifyProductsBatch(products, categories, constructionTypes);
 }

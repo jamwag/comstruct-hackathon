@@ -22,6 +22,7 @@
 
 	<nav class="bg-white border-b px-4 py-2 flex gap-4">
 		<a href="/worker" class="text-blue-600 font-medium hover:underline">Dashboard</a>
+		<a href="/worker/order" class="text-blue-600 font-medium hover:underline">Order Products</a>
 	</nav>
 
 	<main class="p-4">

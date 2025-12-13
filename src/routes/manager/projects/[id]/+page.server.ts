@@ -159,5 +159,29 @@ export const actions: Actions = {
 			);
 
 		return { success: true };
+	},
+
+	updateThreshold: async ({ params, request }) => {
+		const formData = await request.formData();
+		const thresholdStr = formData.get('threshold');
+
+		if (typeof thresholdStr !== 'string') {
+			return fail(400, { message: 'Invalid threshold value' });
+		}
+
+		const thresholdChf = parseFloat(thresholdStr);
+		if (isNaN(thresholdChf) || thresholdChf < 0) {
+			return fail(400, { message: 'Threshold must be a positive number' });
+		}
+
+		// Convert to cents
+		const thresholdCents = Math.round(thresholdChf * 100);
+
+		await db
+			.update(table.project)
+			.set({ autoApprovalThreshold: thresholdCents })
+			.where(eq(table.project.id, params.id));
+
+		return { success: true, thresholdUpdated: true };
 	}
 };

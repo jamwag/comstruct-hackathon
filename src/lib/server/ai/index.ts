@@ -1,5 +1,5 @@
 // AI services for product classification and data mapping
-export { classifyProduct, classifyProducts } from './classify-product';
+export { classifyProduct, classifyProducts, classifyProductsBatch } from './classify-product';
 export type { ClassificationResult, CategoryInfo, ConstructionTypeInfo } from './classify-product';
 
 export { mapCsvColumns, applyMappings } from './map-csv-columns';

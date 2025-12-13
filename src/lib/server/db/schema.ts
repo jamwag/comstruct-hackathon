@@ -2,6 +2,7 @@ import { pgTable, pgEnum, integer, text, timestamp, primaryKey, boolean } from '
 
 export const userRoleEnum = pgEnum('user_role', ['worker', 'manager']);
 export const consumableTypeEnum = pgEnum('consumable_type', ['single-use', 'reusable']);
+export const orderStatusEnum = pgEnum('order_status', ['pending', 'approved', 'rejected']);
 
 export const user = pgTable('user', {
 	id: text('id').primaryKey(),
@@ -30,6 +31,7 @@ export const project = pgTable('project', {
 	id: text('id').primaryKey(),
 	name: text('name').notNull(),
 	address: text('address'),
+	autoApprovalThreshold: integer('auto_approval_threshold').default(20000), // 200 CHF in cents
 	createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
 	createdBy: text('created_by').references(() => user.id)
 });
@@ -130,3 +132,38 @@ export const productConstructionType = pgTable(
 	},
 	(table) => [primaryKey({ columns: [table.productId, table.constructionTypeId] })]
 );
+
+// Orders (worker product requests)
+export const order = pgTable('order', {
+	id: text('id').primaryKey(),
+	projectId: text('project_id')
+		.references(() => project.id)
+		.notNull(),
+	workerId: text('worker_id')
+		.references(() => user.id)
+		.notNull(),
+	status: orderStatusEnum('status').notNull().default('pending'),
+	totalCents: integer('total_cents').notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+	approvedAt: timestamp('approved_at', { withTimezone: true, mode: 'date' }),
+	approvedBy: text('approved_by').references(() => user.id),
+	rejectionReason: text('rejection_reason')
+});
+
+export type Order = typeof order.$inferSelect;
+
+// Order Items (products in an order)
+export const orderItem = pgTable('order_item', {
+	id: text('id').primaryKey(),
+	orderId: text('order_id')
+		.references(() => order.id, { onDelete: 'cascade' })
+		.notNull(),
+	productId: text('product_id')
+		.references(() => product.id)
+		.notNull(),
+	quantity: integer('quantity').notNull(),
+	pricePerUnit: integer('price_per_unit').notNull(), // snapshot at order time
+	totalCents: integer('total_cents').notNull()
+});
+
+export type OrderItem = typeof orderItem.$inferSelect;

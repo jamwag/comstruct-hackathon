@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import type { PageData } from './$types';
+	import type { ActionData, PageData } from './$types';
 
-	let { data }: { data: PageData } = $props();
+	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	let thresholdValue = $state((data.project.autoApprovalThreshold ?? 20000) / 100);
 
 	const assignedWorkerIds = $derived(new Set(data.assignedWorkerIds));
 	const assignedProductIds = $derived(new Set(data.assignedProductIds));
@@ -68,6 +70,39 @@
 		<p class="mt-2 text-sm text-gray-400">
 			Created {data.project.createdAt.toLocaleDateString()}
 		</p>
+	</div>
+
+	<!-- Order Settings -->
+	<div class="bg-white rounded-lg shadow p-6">
+		<h3 class="text-lg font-semibold text-gray-900 mb-4">Order Settings</h3>
+		<form method="post" action="?/updateThreshold" use:enhance class="flex items-end gap-4">
+			<div class="flex-1 max-w-xs">
+				<label for="threshold" class="block text-sm font-medium text-gray-700 mb-1">
+					Auto-Approval Threshold (CHF)
+				</label>
+				<input
+					type="number"
+					id="threshold"
+					name="threshold"
+					min="0"
+					step="0.01"
+					bind:value={thresholdValue}
+					class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+				/>
+				<p class="mt-1 text-xs text-gray-500">
+					Worker orders below this amount are automatically approved.
+				</p>
+			</div>
+			<button
+				type="submit"
+				class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+			>
+				Save
+			</button>
+		</form>
+		{#if form?.thresholdUpdated}
+			<p class="mt-2 text-sm text-green-600">Threshold updated successfully.</p>
+		{/if}
 	</div>
 
 	<div class="bg-white rounded-lg shadow p-6">

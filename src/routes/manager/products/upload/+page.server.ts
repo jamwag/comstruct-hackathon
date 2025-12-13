@@ -5,7 +5,7 @@ import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import type { Actions, PageServerLoad } from './$types';
 import * as XLSX from 'xlsx';
-import { mapCsvColumns, classifyProduct, extractProductsFromPdf } from '$lib/server/ai';
+import { mapCsvColumns, classifyProduct, classifyProductsBatch, extractProductsFromPdf } from '$lib/server/ai';
 import type { ColumnMapping, ExtractedProduct } from '$lib/server/ai';
 
 export const load: PageServerLoad = async () => {
@@ -270,73 +270,92 @@ export const actions: Actions = {
 		const categories = await db.select().from(table.productCategory);
 		const constructionTypes = await db.select().from(table.constructionType);
 
-		let classified = 0;
-		const results: Array<{ productId: string; success: boolean; error?: string }> = [];
+		// Load all products to classify
+		const productsToClassify = await db
+			.select({
+				id: table.product.id,
+				name: table.product.name,
+				description: table.product.description
+			})
+			.from(table.product)
+			.where(
+				productIds.length === 1
+					? eq(table.product.id, productIds[0])
+					: undefined // Will filter below for multiple IDs
+			);
 
-		for (const productId of productIds) {
-			try {
-				// Get product
-				const products = await db
-					.select()
-					.from(table.product)
-					.where(eq(table.product.id, productId))
-					.limit(1);
+		// Filter to only requested IDs
+		const productIdSet = new Set(productIds);
+		const filteredProducts = productsToClassify.filter((p) => productIdSet.has(p.id));
 
-				if (products.length === 0) {
-					results.push({ productId, success: false, error: 'Product not found' });
+		if (filteredProducts.length === 0) {
+			return fail(400, { message: 'No products found' });
+		}
+
+		try {
+			// Use batch classification - single API call for up to 20 products
+			const classifications = await classifyProductsBatch(
+				filteredProducts,
+				categories,
+				constructionTypes
+			);
+
+			let classified = 0;
+			const results: Array<{ productId: string; success: boolean; error?: string }> = [];
+
+			// Update products with classifications
+			for (const product of filteredProducts) {
+				const classification = classifications.get(product.id);
+				if (!classification) {
+					results.push({ productId: product.id, success: false, error: 'Classification not found' });
 					continue;
 				}
 
-				const product = products[0];
-
-				// Classify with AI
-				const classification = await classifyProduct(
-					product.name,
-					product.description,
-					categories,
-					constructionTypes
-				);
-
-				// Update product with classification
-				await db
-					.update(table.product)
-					.set({
-						categoryId: classification.categoryId,
-						subcategoryId: classification.subcategoryId,
-						hazardous: classification.hazardous,
-						consumableType: classification.consumableType
-					})
-					.where(eq(table.product.id, productId));
-
-				// Insert construction type associations
-				for (const ct of classification.constructionTypes) {
+				try {
+					// Update product with classification
 					await db
-						.insert(table.productConstructionType)
-						.values({
-							productId,
-							constructionTypeId: ct.id
+						.update(table.product)
+						.set({
+							categoryId: classification.categoryId,
+							subcategoryId: classification.subcategoryId,
+							hazardous: classification.hazardous,
+							consumableType: classification.consumableType
 						})
-						.onConflictDoNothing();
+						.where(eq(table.product.id, product.id));
+
+					// Insert construction type associations
+					for (const ct of classification.constructionTypes) {
+						await db
+							.insert(table.productConstructionType)
+							.values({
+								productId: product.id,
+								constructionTypeId: ct.id
+							})
+							.onConflictDoNothing();
+					}
+
+					results.push({ productId: product.id, success: true });
+					classified++;
+				} catch (err) {
+					console.error(`Error updating product ${product.id}:`, err);
+					results.push({
+						productId: product.id,
+						success: false,
+						error: err instanceof Error ? err.message : 'Unknown error'
+					});
 				}
-
-				results.push({ productId, success: true });
-				classified++;
-			} catch (err) {
-				console.error(`Error classifying product ${productId}:`, err);
-				results.push({
-					productId,
-					success: false,
-					error: err instanceof Error ? err.message : 'Unknown error'
-				});
 			}
-		}
 
-		return {
-			success: true,
-			classified,
-			total: productIds.length,
-			results
-		};
+			return {
+				success: true,
+				classified,
+				total: productIds.length,
+				results
+			};
+		} catch (err) {
+			console.error('Batch classification error:', err);
+			return fail(500, { message: 'Classification failed' });
+		}
 	},
 
 	importPdf: async ({ request }) => {

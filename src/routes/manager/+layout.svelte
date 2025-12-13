@@ -35,6 +35,12 @@
 			>
 				Products
 			</a>
+			<a
+				href="/manager/orders"
+				class="block px-3 py-2 rounded-md hover:bg-gray-100 text-gray-700 font-medium"
+			>
+				Orders
+			</a>
 		</nav>
 		<div class="border-t pt-4">
 			<div class="text-sm text-gray-600 mb-2">{data.user.username}</div>
