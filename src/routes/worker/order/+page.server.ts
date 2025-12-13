@@ -1,6 +1,6 @@
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
-import { eq, isNull } from 'drizzle-orm';
+import { eq, isNull, and } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -54,8 +54,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		description: string | null;
 	}> = [];
 	let selectedSubcategory: (typeof mainCategories)[0] | null = null;
-	if (subcategoryId) {
+	if (subcategoryId && selectedProjectId) {
 		selectedSubcategory = subcategories.find((c) => c.id === subcategoryId) || null;
+		// Only show products assigned to the selected project
 		const productRows = await db
 			.select({
 				id: table.product.id,
@@ -66,7 +67,16 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 				description: table.product.description
 			})
 			.from(table.product)
-			.where(eq(table.product.subcategoryId, subcategoryId))
+			.innerJoin(
+				table.projectProduct,
+				eq(table.product.id, table.projectProduct.productId)
+			)
+			.where(
+				and(
+					eq(table.product.subcategoryId, subcategoryId),
+					eq(table.projectProduct.projectId, selectedProjectId)
+				)
+			)
 			.orderBy(table.product.name);
 		products = productRows;
 	}
