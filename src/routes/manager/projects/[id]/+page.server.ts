@@ -75,6 +75,21 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	// Available suppliers are those not yet assigned
 	const availableSuppliers = allSuppliers.filter((s) => !assignedSupplierIds.has(s.id));
 
+	// Get all project managers (for procurement to assign)
+	const allProjectManagers = await db
+		.select({ id: table.user.id, username: table.user.username })
+		.from(table.user)
+		.where(eq(table.user.role, 'project_manager'))
+		.orderBy(asc(table.user.username));
+
+	// Get assigned project managers for this project
+	const assignedPMRows = await db
+		.select({ managerId: table.projectManagerAssignment.managerId })
+		.from(table.projectManagerAssignment)
+		.where(eq(table.projectManagerAssignment.projectId, params.id));
+
+	const assignedPMIds = assignedPMRows.map((r) => r.managerId);
+
 	return {
 		project,
 		allWorkers,
@@ -84,6 +99,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		categories,
 		projectSuppliers,
 		availableSuppliers,
+		allProjectManagers,
+		assignedPMIds,
 		userRole: locals.user?.role
 	};
 };
@@ -407,6 +424,65 @@ export const actions: Actions = {
 				and(
 					eq(table.projectSupplier.projectId, params.id),
 					eq(table.projectSupplier.supplierId, supplierId)
+				)
+			);
+
+		return { success: true };
+	},
+
+	assignPM: async ({ params, request, locals }) => {
+		// Only procurement can assign project managers
+		if (locals.user?.role !== 'manager') {
+			return fail(403, { message: 'Not authorized' });
+		}
+
+		const formData = await request.formData();
+		const pmId = formData.get('pmId');
+
+		if (typeof pmId !== 'string') {
+			return fail(400, { message: 'Invalid project manager ID' });
+		}
+
+		// Check if already assigned
+		const [existing] = await db
+			.select()
+			.from(table.projectManagerAssignment)
+			.where(
+				and(
+					eq(table.projectManagerAssignment.projectId, params.id),
+					eq(table.projectManagerAssignment.managerId, pmId)
+				)
+			);
+
+		if (!existing) {
+			await db.insert(table.projectManagerAssignment).values({
+				projectId: params.id,
+				managerId: pmId
+			});
+		}
+
+		return { success: true };
+	},
+
+	unassignPM: async ({ params, request, locals }) => {
+		// Only procurement can unassign project managers
+		if (locals.user?.role !== 'manager') {
+			return fail(403, { message: 'Not authorized' });
+		}
+
+		const formData = await request.formData();
+		const pmId = formData.get('pmId');
+
+		if (typeof pmId !== 'string') {
+			return fail(400, { message: 'Invalid project manager ID' });
+		}
+
+		await db
+			.delete(table.projectManagerAssignment)
+			.where(
+				and(
+					eq(table.projectManagerAssignment.projectId, params.id),
+					eq(table.projectManagerAssignment.managerId, pmId)
 				)
 			);
 

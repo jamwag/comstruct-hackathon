@@ -68,6 +68,23 @@ export const projectWorker = pgTable(
 	(table) => [primaryKey({ columns: [table.projectId, table.workerId] })]
 );
 
+// Project Manager-Project assignments (many-to-many)
+export const projectManagerAssignment = pgTable(
+	'project_manager_assignment',
+	{
+		projectId: text('project_id')
+			.references(() => project.id, { onDelete: 'cascade' })
+			.notNull(),
+		managerId: text('manager_id')
+			.references(() => user.id, { onDelete: 'cascade' })
+			.notNull(),
+		assignedAt: timestamp('assigned_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull()
+	},
+	(table) => [primaryKey({ columns: [table.projectId, table.managerId] })]
+);
+
+export type ProjectManagerAssignment = typeof projectManagerAssignment.$inferSelect;
+
 // Product-Project assignments (many-to-many)
 export const projectProduct = pgTable(
 	'project_product',

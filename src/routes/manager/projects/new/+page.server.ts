@@ -19,15 +19,24 @@ export const actions: Actions = {
 		}
 
 		const projectId = generateId();
+		const user = locals.user!;
 
 		await db.insert(table.project).values({
 			id: projectId,
 			name: name.trim(),
 			address: typeof address === 'string' && address.trim() ? address.trim() : null,
-			createdBy: locals.user?.id ?? null
+			createdBy: user.id
 		});
 
-		throw redirect(302, `/manager?project=${projectId}`);
+		// Auto-assign project manager to their created project
+		if (user.role === 'project_manager') {
+			await db.insert(table.projectManagerAssignment).values({
+				projectId,
+				managerId: user.id
+			});
+		}
+
+		throw redirect(302, `/manager/projects/${projectId}`);
 	}
 };
 

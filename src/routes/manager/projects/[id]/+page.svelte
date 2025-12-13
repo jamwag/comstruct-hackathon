@@ -8,6 +8,7 @@
 
 	const assignedWorkerIds = $derived(new Set(data.assignedWorkerIds));
 	const assignedProductIds = $derived(new Set(data.assignedProductIds));
+	const assignedPMIds = $derived(new Set(data.assignedPMIds));
 
 	// Role-based visibility
 	const isProjectManager = data.userRole === 'project_manager';
@@ -107,6 +108,41 @@
 			</form>
 			{#if form?.thresholdUpdated}
 				<p class="mt-2 text-sm text-green-600">Threshold updated successfully.</p>
+			{/if}
+		</div>
+
+		<!-- Assigned Project Managers - Procurement only -->
+		<div class="bg-white rounded-lg shadow p-6">
+			<h3 class="text-lg font-semibold text-gray-900 mb-4">Assigned Project Managers</h3>
+
+			{#if data.allProjectManagers.length === 0}
+				<p class="text-gray-500 text-sm">No project managers registered yet.</p>
+			{:else}
+				<div class="space-y-2">
+					{#each data.allProjectManagers as pm (pm.id)}
+						{@const isAssigned = assignedPMIds.has(pm.id)}
+						<div class="flex items-center justify-between py-2 px-3 rounded-md {isAssigned ? 'bg-blue-50' : 'bg-gray-50'}">
+							<div class="flex items-center gap-3">
+								<span class="w-2 h-2 rounded-full {isAssigned ? 'bg-blue-500' : 'bg-gray-300'}"></span>
+								<span class="font-medium text-gray-900">{pm.username}</span>
+								{#if isAssigned}
+									<span class="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">Assigned</span>
+								{/if}
+							</div>
+							<form method="post" action={isAssigned ? '?/unassignPM' : '?/assignPM'} use:enhance>
+								<input type="hidden" name="pmId" value={pm.id} />
+								<button
+									type="submit"
+									class="text-sm px-3 py-1 rounded {isAssigned
+										? 'bg-red-100 text-red-700 hover:bg-red-200'
+										: 'bg-blue-100 text-blue-700 hover:bg-blue-200'} transition-colors"
+								>
+									{isAssigned ? 'Remove' : 'Assign'}
+								</button>
+							</form>
+						</div>
+					{/each}
+				</div>
 			{/if}
 		</div>
 	{/if}
