@@ -1,10 +1,30 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { cart, type CartItem } from '$lib/stores/cart';
+	import { selectedProjectId } from '$lib/stores/selectedProject';
 	import { page } from '$app/stores';
-	import { onDestroy, untrack } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { onMount, onDestroy, untrack } from 'svelte';
 
 	let { data }: { data: PageData } = $props();
+
+	// Get current project from store
+	const currentProjectId = $derived($selectedProjectId);
+
+	// Sync URL param with store on mount (for backward compatibility with direct links)
+	onMount(() => {
+		const urlProject = $page.url.searchParams.get('project');
+		if (urlProject && urlProject !== currentProjectId) {
+			selectedProjectId.set(urlProject);
+		}
+	});
+
+	// Navigate when project changes in the store
+	$effect(() => {
+		if (currentProjectId && currentProjectId !== data.selectedProject?.id) {
+			goto(`/worker/order?project=${currentProjectId}`, { replaceState: true });
+		}
+	});
 
 	// Track quantities for adding to cart (initialized per product)
 	let quantities = $state<Record<string, number>>({});
@@ -24,8 +44,8 @@
 
 	// Get cart items for display - use store subscription with cleanup
 	let cartItems = $state<CartItem[]>([]);
-	const unsubscribe = cart.subscribe((items) => {
-		cartItems = items;
+	const unsubscribe = cart.subscribe((state) => {
+		cartItems = state.items;
 	});
 	onDestroy(unsubscribe);
 
@@ -74,30 +94,12 @@
 </svelte:head>
 
 <div class="space-y-4">
-	<!-- Header with project selector -->
+	<!-- Header -->
 	<div class="bg-white rounded-lg shadow p-4">
-		<div class="flex items-center justify-between">
-			<h2 class="text-xl font-bold text-gray-900">Order Products</h2>
-			{#if data.projects.length > 1}
-				<select
-					class="rounded-md border border-gray-300 px-3 py-2 text-sm"
-					value={data.selectedProject?.id || ''}
-					onchange={(e) => {
-						const url = new URL($page.url);
-						url.searchParams.set('project', e.currentTarget.value);
-						url.searchParams.delete('category');
-						url.searchParams.delete('sub');
-						window.location.href = url.toString();
-					}}
-				>
-					{#each data.projects as project (project.id)}
-						<option value={project.id}>{project.name}</option>
-					{/each}
-				</select>
-			{:else if data.selectedProject}
-				<span class="text-sm text-gray-500">Project: {data.selectedProject.name}</span>
-			{/if}
-		</div>
+		<h2 class="text-xl font-bold text-gray-900">Order Products</h2>
+		{#if data.selectedProject}
+			<p class="text-sm text-gray-500 mt-1">Project: {data.selectedProject.name}</p>
+		{/if}
 	</div>
 
 	{#if data.projects.length === 0}
@@ -238,23 +240,23 @@
 		</div>
 	{/if}
 
-	<!-- Floating Cart Summary -->
+	<!-- Floating Cart Summary (above bottom nav) -->
 	{#if cartItems.length > 0}
-		<div class="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-4 z-50">
+		<div class="fixed bottom-16 left-0 right-0 bg-white border-t shadow-lg p-4 z-40">
 			<div class="max-w-lg mx-auto flex items-center justify-between">
 				<div>
 					<p class="font-medium text-gray-900">{getCartItemCount()} items</p>
 					<p class="text-lg font-bold text-blue-600">CHF {formatPrice(getCartTotal())}</p>
 				</div>
 				<a
-					href="/worker/order/checkout?project={data.selectedProject?.id}"
+					href="/worker/order/checkout?project={currentProjectId}"
 					class="bg-green-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-green-700 active:scale-95 transition-all"
 				>
 					Checkout
 				</a>
 			</div>
 		</div>
-		<!-- Spacer for fixed bottom bar -->
-		<div class="h-24"></div>
+		<!-- Spacer for floating cart + bottom nav -->
+		<div class="h-32"></div>
 	{/if}
 </div>

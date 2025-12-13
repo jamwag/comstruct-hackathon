@@ -64,7 +64,7 @@
 
 <div class="space-y-4">
 	<div class="flex items-center gap-2">
-		<a href="/worker/order?project={data.project.id}" class="inline-flex items-center text-blue-600 hover:underline">
+		<a href="/worker/order" class="inline-flex items-center text-blue-600 hover:underline">
 			<svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
 			</svg>
@@ -95,7 +95,7 @@
 			</p>
 			<div class="flex justify-center gap-3 pt-4">
 				<a
-					href="/worker/order?project={data.project.id}"
+					href="/worker/order"
 					class="bg-blue-600 text-white py-2 px-4 rounded-md font-medium hover:bg-blue-700"
 				>
 					Order More
@@ -104,7 +104,7 @@
 					href="/worker"
 					class="bg-gray-100 text-gray-700 py-2 px-4 rounded-md font-medium hover:bg-gray-200"
 				>
-					Back to Dashboard
+					Back to Home
 				</a>
 			</div>
 		</div>
@@ -113,7 +113,7 @@
 		<div class="bg-gray-50 rounded-lg p-6 text-center">
 			<p class="text-gray-500">Your cart is empty.</p>
 			<a
-				href="/worker/order?project={data.project.id}"
+				href="/worker/order"
 				class="inline-block mt-4 bg-blue-600 text-white py-2 px-4 rounded-md font-medium hover:bg-blue-700"
 			>
 				Start Shopping
