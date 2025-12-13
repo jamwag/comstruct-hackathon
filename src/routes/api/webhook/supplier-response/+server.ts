@@ -22,7 +22,21 @@ function generateId() {
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		const payload: SupplierResponsePayload = await request.json();
+		// Log raw body for debugging
+		const rawBody = await request.text();
+		console.log('Received webhook body:', rawBody);
+
+		if (!rawBody || rawBody.trim() === '') {
+			return json({ error: 'Empty request body' }, { status: 400 });
+		}
+
+		let payload: SupplierResponsePayload;
+		try {
+			payload = JSON.parse(rawBody);
+		} catch (parseError) {
+			console.error('JSON parse error:', parseError);
+			return json({ error: 'Invalid JSON body', received: rawBody.substring(0, 200) }, { status: 400 });
+		}
 
 		const { order_id, supplier_email, status, delivery_date, message } = payload.output;
 

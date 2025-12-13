@@ -17,7 +17,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		.where(eq(table.order.workerId, user.id))
 		.orderBy(desc(table.order.createdAt));
 
-	// Fetch order items with product names for each order
+	// Fetch order items and supplier responses for each order
 	const ordersWithItems = await Promise.all(
 		ordersWithProjects.map(async ({ order, project }) => {
 			const items = await db
@@ -33,7 +33,22 @@ export const load: PageServerLoad = async ({ locals }) => {
 				.innerJoin(table.product, eq(table.orderItem.productId, table.product.id))
 				.where(eq(table.orderItem.orderId, order.id));
 
-			return { order, project, items };
+			// Fetch supplier responses for this order
+			const supplierResponses = await db
+				.select({
+					id: table.orderSupplierResponse.id,
+					status: table.orderSupplierResponse.status,
+					deliveryDate: table.orderSupplierResponse.deliveryDate,
+					message: table.orderSupplierResponse.message,
+					receivedAt: table.orderSupplierResponse.receivedAt,
+					supplierName: table.supplier.name,
+					supplierEmail: table.supplier.contactEmail
+				})
+				.from(table.orderSupplierResponse)
+				.innerJoin(table.supplier, eq(table.orderSupplierResponse.supplierId, table.supplier.id))
+				.where(eq(table.orderSupplierResponse.orderId, order.id));
+
+			return { order, project, items, supplierResponses };
 		})
 	);
 

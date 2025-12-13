@@ -50,6 +50,28 @@
 				return 'bg-yellow-100 text-yellow-800';
 		}
 	}
+
+	function getSupplierStatusColor(status: string): string {
+		switch (status) {
+			case 'confirmed':
+				return 'bg-green-100 text-green-800';
+			case 'rejected':
+				return 'bg-red-100 text-red-800';
+			case 'partial':
+				return 'bg-yellow-100 text-yellow-800';
+			default:
+				return 'bg-gray-100 text-gray-800';
+		}
+	}
+
+	function formatDeliveryDate(date: Date | null): string {
+		if (!date) return '';
+		return new Date(date).toLocaleDateString('de-CH', {
+			day: '2-digit',
+			month: '2-digit',
+			year: 'numeric'
+		});
+	}
 </script>
 
 <svelte:head>
@@ -87,7 +109,7 @@
 		</div>
 	{:else}
 		<div class="space-y-3">
-			{#each filteredOrders as { order, project, items } (order.id)}
+			{#each filteredOrders as { order, project, items, supplierResponses } (order.id)}
 				<div class="bg-white rounded-lg shadow overflow-hidden">
 					<!-- Order Header (clickable) -->
 					<button
@@ -161,6 +183,39 @@
 										<strong>Rejection reason:</strong>
 										{order.rejectionReason}
 									</p>
+								</div>
+							{/if}
+
+							<!-- Supplier Responses -->
+							{#if supplierResponses && supplierResponses.length > 0}
+								<div class="mt-4">
+									<h4 class="text-sm font-medium text-gray-700 mb-2">
+										Supplier Responses ({supplierResponses.length})
+									</h4>
+									<div class="space-y-2">
+										{#each supplierResponses as response (response.id)}
+											<div class="p-3 bg-white rounded border">
+												<div class="flex items-center justify-between">
+													<span class="font-medium text-gray-900">{response.supplierName}</span>
+													<span
+														class="px-2 py-0.5 rounded text-xs font-medium capitalize {getSupplierStatusColor(response.status)}"
+													>
+														{response.status}
+													</span>
+												</div>
+												{#if response.deliveryDate}
+													<p class="text-sm text-gray-600 mt-1">
+														Delivery: {formatDeliveryDate(response.deliveryDate)}
+													</p>
+												{/if}
+												{#if response.message}
+													<p class="text-sm text-gray-500 mt-1 italic">
+														"{response.message}"
+													</p>
+												{/if}
+											</div>
+										{/each}
+									</div>
 								</div>
 							{/if}
 						</div>

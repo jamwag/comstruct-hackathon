@@ -34,6 +34,28 @@
 		}
 	}
 
+	function getSupplierStatusColor(status: string): string {
+		switch (status) {
+			case 'confirmed':
+				return 'bg-green-100 text-green-800';
+			case 'rejected':
+				return 'bg-red-100 text-red-800';
+			case 'partial':
+				return 'bg-yellow-100 text-yellow-800';
+			default:
+				return 'bg-gray-100 text-gray-800';
+		}
+	}
+
+	function formatDeliveryDate(date: Date | null): string {
+		if (!date) return '';
+		return new Date(date).toLocaleDateString('de-CH', {
+			day: '2-digit',
+			month: '2-digit',
+			year: 'numeric'
+		});
+	}
+
 	function toggleExpand(orderId: string) {
 		expandedOrder = expandedOrder === orderId ? null : orderId;
 	}
@@ -210,6 +232,39 @@
 									<p class="text-sm text-gray-500">
 										<strong>Rejection reason:</strong> {order.order.rejectionReason}
 									</p>
+								</div>
+							{/if}
+
+							<!-- Supplier Responses -->
+							{#if order.supplierResponses && order.supplierResponses.length > 0}
+								<div class="mt-4 pt-4 border-t">
+									<h4 class="font-medium text-gray-900 mb-3">
+										Supplier Responses ({order.supplierResponses.length})
+									</h4>
+									<div class="space-y-2">
+										{#each order.supplierResponses as response (response.id)}
+											<div class="p-3 bg-white rounded border">
+												<div class="flex items-center justify-between">
+													<span class="font-medium text-gray-900">{response.supplierName}</span>
+													<span
+														class="px-2 py-0.5 rounded text-xs font-medium capitalize {getSupplierStatusColor(response.status)}"
+													>
+														{response.status}
+													</span>
+												</div>
+												{#if response.deliveryDate}
+													<p class="text-sm text-gray-600 mt-1">
+														Delivery: {formatDeliveryDate(response.deliveryDate)}
+													</p>
+												{/if}
+												{#if response.message}
+													<p class="text-sm text-gray-500 mt-1 italic">
+														"{response.message}"
+													</p>
+												{/if}
+											</div>
+										{/each}
+									</div>
 								</div>
 							{/if}
 						</div>

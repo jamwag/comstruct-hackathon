@@ -24,7 +24,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		)
 		.orderBy(desc(table.order.createdAt));
 
-	// Get order items for each order
+	// Get order items and supplier responses for each order
 	const ordersWithItems = await Promise.all(
 		ordersQuery.map(async (row) => {
 			const items = await db
@@ -36,12 +36,28 @@ export const load: PageServerLoad = async ({ url }) => {
 				.innerJoin(table.product, eq(table.orderItem.productId, table.product.id))
 				.where(eq(table.orderItem.orderId, row.order.id));
 
+			// Fetch supplier responses for this order
+			const supplierResponses = await db
+				.select({
+					id: table.orderSupplierResponse.id,
+					status: table.orderSupplierResponse.status,
+					deliveryDate: table.orderSupplierResponse.deliveryDate,
+					message: table.orderSupplierResponse.message,
+					receivedAt: table.orderSupplierResponse.receivedAt,
+					supplierName: table.supplier.name,
+					supplierEmail: table.supplier.contactEmail
+				})
+				.from(table.orderSupplierResponse)
+				.innerJoin(table.supplier, eq(table.orderSupplierResponse.supplierId, table.supplier.id))
+				.where(eq(table.orderSupplierResponse.orderId, row.order.id));
+
 			return {
 				...row,
 				items: items.map((i) => ({
 					...i.orderItem,
 					product: i.product
-				}))
+				})),
+				supplierResponses
 			};
 		})
 	);
