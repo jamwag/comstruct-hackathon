@@ -1,5 +1,5 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
+import { eq, desc, count } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import type { Actions, PageServerLoad } from './$types';
@@ -11,7 +11,29 @@ export const load: PageServerLoad = async ({ params }) => {
 		throw error(404, 'Supplier not found');
 	}
 
-	return { supplier };
+	// Fetch products for this supplier
+	const products = await db
+		.select({
+			id: table.product.id,
+			sku: table.product.sku,
+			name: table.product.name,
+			unit: table.product.unit,
+			pricePerUnit: table.product.pricePerUnit,
+			categoryName: table.productCategory.name
+		})
+		.from(table.product)
+		.leftJoin(table.productCategory, eq(table.product.categoryId, table.productCategory.id))
+		.where(eq(table.product.supplierId, params.id))
+		.orderBy(desc(table.product.createdAt))
+		.limit(100);
+
+	// Get total product count
+	const [productCount] = await db
+		.select({ count: count() })
+		.from(table.product)
+		.where(eq(table.product.supplierId, params.id));
+
+	return { supplier, products, productCount: productCount.count };
 };
 
 export const actions: Actions = {

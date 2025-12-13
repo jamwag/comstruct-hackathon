@@ -5,7 +5,7 @@
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let selectedFile = $state<File | null>(null);
-	let selectedSupplierId = $state('');
+	let selectedSupplierId = $state(data.preselectedSupplierId || '');
 	let step = $state<'upload' | 'mapping' | 'pdf-preview' | 'done'>('upload');
 	let isClassifying = $state(false);
 	let classificationResult = $state<{ classified: number; total: number } | null>(null);
@@ -180,7 +180,11 @@
 
 <div class="max-w-4xl">
 	<div class="mb-6">
-		<a href="/manager/products" class="text-blue-600 hover:underline text-sm">&larr; Back to Products</a>
+		{#if data.preselectedSupplierId}
+			<a href="/manager/suppliers/{data.preselectedSupplierId}" class="text-blue-600 hover:underline text-sm">&larr; Back to Supplier</a>
+		{:else}
+			<a href="/manager/products" class="text-blue-600 hover:underline text-sm">&larr; Back to Products</a>
+		{/if}
 	</div>
 
 	<div class="bg-white rounded-lg shadow p-6">

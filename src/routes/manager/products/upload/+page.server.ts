@@ -8,7 +8,7 @@ import * as XLSX from 'xlsx';
 import { mapCsvColumns, classifyProduct, classifyProductsBatch, extractProductsFromPdf } from '$lib/server/ai';
 import type { ColumnMapping, ExtractedProduct } from '$lib/server/ai';
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ url }) => {
 	const suppliers = await db.select().from(table.supplier).orderBy(table.supplier.name);
 
 	// Load categories with hierarchy info
@@ -23,7 +23,10 @@ export const load: PageServerLoad = async () => {
 		.from(table.constructionType)
 		.orderBy(table.constructionType.sortOrder);
 
-	return { suppliers, categories, constructionTypes };
+	// Get pre-selected supplier from URL param
+	const preselectedSupplierId = url.searchParams.get('supplier');
+
+	return { suppliers, categories, constructionTypes, preselectedSupplierId };
 };
 
 export const actions: Actions = {

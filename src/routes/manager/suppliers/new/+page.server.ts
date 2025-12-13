@@ -37,7 +37,7 @@ export const actions: Actions = {
 			shopUrl: typeof shopUrl === 'string' && shopUrl.trim() ? shopUrl.trim() : null
 		});
 
-		throw redirect(302, '/manager/suppliers');
+		throw redirect(302, `/manager/suppliers/${supplierId}`);
 	}
 };
 
