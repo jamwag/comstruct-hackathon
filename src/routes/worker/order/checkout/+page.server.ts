@@ -3,6 +3,7 @@ import { encodeBase32LowerCase } from '@oslojs/encoding';
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
+import { generateOrderNumber, sendOrderWebhooks } from '$lib/server/webhook';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -85,9 +86,11 @@ export const actions: Actions = {
 
 		// Create order
 		const orderId = generateId();
+		const orderNumber = await generateOrderNumber();
 
 		await db.insert(table.order).values({
 			id: orderId,
+			orderNumber,
 			projectId,
 			workerId: user.id,
 			status: isAutoApproved ? 'approved' : 'pending',
@@ -109,6 +112,11 @@ export const actions: Actions = {
 				totalCents: item.pricePerUnit * item.quantity
 			});
 		}
+
+		// Send webhook to suppliers (fire-and-forget)
+		sendOrderWebhooks(orderId).catch((err) => {
+			console.error('Failed to send order webhooks:', err);
+		});
 
 		return {
 			success: true,

@@ -4,6 +4,11 @@ export const userRoleEnum = pgEnum('user_role', ['worker', 'manager']);
 export const consumableTypeEnum = pgEnum('consumable_type', ['single-use', 'reusable']);
 export const orderStatusEnum = pgEnum('order_status', ['pending', 'approved', 'rejected']);
 export const orderPriorityEnum = pgEnum('order_priority', ['normal', 'urgent']);
+export const supplierResponseStatusEnum = pgEnum('supplier_response_status', [
+	'confirmed',
+	'rejected',
+	'partial'
+]);
 
 export const user = pgTable('user', {
 	id: text('id').primaryKey(),
@@ -137,6 +142,7 @@ export const productConstructionType = pgTable(
 // Orders (worker product requests)
 export const order = pgTable('order', {
 	id: text('id').primaryKey(),
+	orderNumber: text('order_number').notNull(),
 	projectId: text('project_id')
 		.references(() => project.id)
 		.notNull(),
@@ -171,6 +177,23 @@ export const orderItem = pgTable('order_item', {
 });
 
 export type OrderItem = typeof orderItem.$inferSelect;
+
+// Supplier Responses - tracks supplier confirmations/rejections per order
+export const orderSupplierResponse = pgTable('order_supplier_response', {
+	id: text('id').primaryKey(),
+	orderId: text('order_id')
+		.references(() => order.id, { onDelete: 'cascade' })
+		.notNull(),
+	supplierId: text('supplier_id')
+		.references(() => supplier.id)
+		.notNull(),
+	status: supplierResponseStatusEnum('status').notNull(),
+	deliveryDate: timestamp('delivery_date', { mode: 'date' }),
+	message: text('message'),
+	receivedAt: timestamp('received_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull()
+});
+
+export type OrderSupplierResponse = typeof orderSupplierResponse.$inferSelect;
 
 // User Favorites - tracks frequently ordered products per user/project
 export const userFavorite = pgTable(
