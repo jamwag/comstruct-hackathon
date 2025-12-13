@@ -11,7 +11,7 @@
 
 <div class="max-w-xl">
 	<div class="mb-6">
-		<a href="/manager/projects" class="text-blue-600 hover:underline text-sm">&larr; Back to Projects</a>
+		<a href="/manager" class="text-blue-600 hover:underline text-sm">&larr; Back to Dashboard</a>
 	</div>
 
 	<div class="bg-white rounded-lg shadow p-6">
@@ -53,7 +53,7 @@
 					Create Project
 				</button>
 				<a
-					href="/manager/projects"
+					href="/manager"
 					class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
 				>
 					Cancel

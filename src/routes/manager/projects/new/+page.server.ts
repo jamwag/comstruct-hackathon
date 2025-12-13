@@ -27,7 +27,7 @@ export const actions: Actions = {
 			createdBy: locals.user?.id ?? null
 		});
 
-		throw redirect(302, `/manager/projects/${projectId}`);
+		throw redirect(302, `/manager?project=${projectId}`);
 	}
 };
 

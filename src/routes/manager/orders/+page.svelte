@@ -1,13 +1,37 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { page } from '$app/stores';
+	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import type { ActionData, PageData } from './$types';
+	import { managerSelectedProjectId } from '$lib/stores/managerSelectedProject';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let expandedOrder = $state<string | null>(null);
 	let rejectingOrder = $state<string | null>(null);
 	let rejectReason = $state('');
+
+	// Sync URL with store on mount
+	onMount(() => {
+		const urlProjectId = $page.url.searchParams.get('project');
+		const storeProjectId = $managerSelectedProjectId;
+
+		if (urlProjectId && urlProjectId !== storeProjectId) {
+			managerSelectedProjectId.set(urlProjectId);
+		} else if (storeProjectId && !urlProjectId) {
+			const url = new URL($page.url);
+			url.searchParams.set('project', storeProjectId);
+			goto(url.toString(), { replaceState: true, keepFocus: true });
+		}
+	});
+
+	// Build URL with project param preserved
+	function statusUrl(status: string): string {
+		const url = new URL($page.url);
+		url.searchParams.set('status', status);
+		return url.pathname + url.search;
+	}
 
 	function formatPrice(cents: number): string {
 		return (cents / 100).toFixed(2);
@@ -70,7 +94,7 @@
 		<h2 class="text-2xl font-bold text-gray-900">Orders</h2>
 		<div class="flex gap-2">
 			<a
-				href="?status=pending"
+				href={statusUrl('pending')}
 				class="px-3 py-1 rounded-md text-sm {data.statusFilter === 'pending'
 					? 'bg-yellow-100 text-yellow-800 font-medium'
 					: 'bg-gray-100 text-gray-600 hover:bg-gray-200'}"
@@ -78,7 +102,7 @@
 				Pending
 			</a>
 			<a
-				href="?status=approved"
+				href={statusUrl('approved')}
 				class="px-3 py-1 rounded-md text-sm {data.statusFilter === 'approved'
 					? 'bg-green-100 text-green-800 font-medium'
 					: 'bg-gray-100 text-gray-600 hover:bg-gray-200'}"
@@ -86,7 +110,7 @@
 				Approved
 			</a>
 			<a
-				href="?status=rejected"
+				href={statusUrl('rejected')}
 				class="px-3 py-1 rounded-md text-sm {data.statusFilter === 'rejected'
 					? 'bg-red-100 text-red-800 font-medium'
 					: 'bg-gray-100 text-gray-600 hover:bg-gray-200'}"
@@ -94,7 +118,7 @@
 				Rejected
 			</a>
 			<a
-				href="?status=all"
+				href={statusUrl('all')}
 				class="px-3 py-1 rounded-md text-sm {data.statusFilter === 'all'
 					? 'bg-blue-100 text-blue-800 font-medium'
 					: 'bg-gray-100 text-gray-600 hover:bg-gray-200'}"

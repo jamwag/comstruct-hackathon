@@ -1,7 +1,27 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import type { PageData } from './$types';
+	import { managerSelectedProjectId } from '$lib/stores/managerSelectedProject';
 
 	let { data }: { data: PageData } = $props();
+
+	// Sync URL with store on mount
+	onMount(() => {
+		const urlProjectId = $page.url.searchParams.get('project');
+		const storeProjectId = $managerSelectedProjectId;
+
+		if (urlProjectId && urlProjectId !== storeProjectId) {
+			// URL has a project, update store
+			managerSelectedProjectId.set(urlProjectId);
+		} else if (storeProjectId && !urlProjectId) {
+			// Store has project but URL doesn't, update URL
+			const url = new URL($page.url);
+			url.searchParams.set('project', storeProjectId);
+			goto(url.toString(), { replaceState: true, keepFocus: true });
+		}
+	});
 
 	function formatPrice(cents: number): string {
 		return (cents / 100).toFixed(2);
@@ -90,7 +110,7 @@
 			</div>
 		</div>
 
-		<a href="/manager/orders?status=pending" class="bg-white rounded-lg shadow p-5 hover:shadow-md transition-shadow">
+		<a href="/manager/orders?status=pending{data.projectId ? `&project=${data.projectId}` : ''}" class="bg-white rounded-lg shadow p-5 hover:shadow-md transition-shadow">
 			<div class="flex items-center gap-3">
 				<div class="p-2 bg-purple-100 rounded-lg">
 					<svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -106,11 +126,7 @@
 	</div>
 
 	<!-- Resource Counts -->
-	<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-		<a href="/manager/projects" class="bg-white rounded-lg shadow p-5 hover:shadow-md transition-shadow">
-			<div class="text-sm font-medium text-gray-500">Projects</div>
-			<div class="mt-1 text-2xl font-bold text-gray-900">{data.counts.projects}</div>
-		</a>
+	<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 		<a href="/manager/suppliers" class="bg-white rounded-lg shadow p-5 hover:shadow-md transition-shadow">
 			<div class="text-sm font-medium text-gray-500">Suppliers</div>
 			<div class="mt-1 text-2xl font-bold text-gray-900">{data.counts.suppliers}</div>
@@ -125,7 +141,7 @@
 	<div class="bg-white rounded-lg shadow">
 		<div class="px-6 py-4 border-b flex justify-between items-center">
 			<h3 class="text-lg font-semibold text-gray-900">Recent Orders</h3>
-			<a href="/manager/orders" class="text-sm text-blue-600 hover:underline">View all &rarr;</a>
+			<a href="/manager/orders?status=all{data.projectId ? `&project=${data.projectId}` : ''}" class="text-sm text-blue-600 hover:underline">View all &rarr;</a>
 		</div>
 		{#if data.recentOrders.length === 0}
 			<div class="p-6">
@@ -175,38 +191,6 @@
 			</div>
 		{/if}
 	</div>
-
-	<!-- Spending by Project -->
-	{#if data.spendByProject.length > 0}
-		<div class="bg-white rounded-lg shadow">
-			<div class="px-6 py-4 border-b">
-				<h3 class="text-lg font-semibold text-gray-900">Spending by Project</h3>
-				<p class="text-sm text-gray-500">Approved orders only</p>
-			</div>
-			<div class="p-6">
-				<div class="space-y-4">
-					{#each data.spendByProject as project (project.projectId)}
-						{@const maxSpend = Math.max(...data.spendByProject.map(p => p.totalCents))}
-						{@const percentage = maxSpend > 0 ? (project.totalCents / maxSpend) * 100 : 0}
-						<div>
-							<div class="flex justify-between items-center mb-1">
-								<span class="text-sm font-medium text-gray-700">{project.projectName}</span>
-								<span class="text-sm text-gray-600">
-									CHF {formatPrice(project.totalCents)} ({project.orderCount} orders)
-								</span>
-							</div>
-							<div class="w-full bg-gray-200 rounded-full h-2">
-								<div
-									class="bg-blue-600 h-2 rounded-full transition-all"
-									style="width: {percentage}%"
-								></div>
-							</div>
-						</div>
-					{/each}
-				</div>
-			</div>
-		</div>
-	{/if}
 
 	<!-- About C-Materials -->
 	<div class="bg-white rounded-lg shadow">

@@ -1,11 +1,25 @@
 import { fail } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
 	const statusFilter = url.searchParams.get('status') || 'pending';
+	const projectId = url.searchParams.get('project');
+
+	// Build filter conditions
+	let whereCondition;
+	if (projectId && statusFilter !== 'all') {
+		whereCondition = and(
+			eq(table.order.projectId, projectId),
+			eq(table.order.status, statusFilter as 'pending' | 'approved' | 'rejected')
+		);
+	} else if (projectId) {
+		whereCondition = eq(table.order.projectId, projectId);
+	} else if (statusFilter !== 'all') {
+		whereCondition = eq(table.order.status, statusFilter as 'pending' | 'approved' | 'rejected');
+	}
 
 	// Get all orders with related data
 	const ordersQuery = await db
@@ -17,11 +31,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		.from(table.order)
 		.innerJoin(table.project, eq(table.order.projectId, table.project.id))
 		.innerJoin(table.user, eq(table.order.workerId, table.user.id))
-		.where(
-			statusFilter === 'all'
-				? undefined
-				: eq(table.order.status, statusFilter as 'pending' | 'approved' | 'rejected')
-		)
+		.where(whereCondition)
 		.orderBy(desc(table.order.createdAt));
 
 	// Get order items and supplier responses for each order
@@ -62,13 +72,10 @@ export const load: PageServerLoad = async ({ url }) => {
 		})
 	);
 
-	// Get projects for filter dropdown
-	const projects = await db.select().from(table.project).orderBy(table.project.name);
-
 	return {
 		orders: ordersWithItems,
-		projects,
-		statusFilter
+		statusFilter,
+		projectId
 	};
 };
 

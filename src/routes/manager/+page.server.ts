@@ -1,19 +1,38 @@
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
-import { count, sum, eq, desc } from 'drizzle-orm';
+import { count, sum, eq, desc, and } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ url }) => {
+	const projectId = url.searchParams.get('project');
+
 	// Resource counts
-	const [projectCount] = await db.select({ count: count() }).from(table.project);
 	const [supplierCount] = await db.select({ count: count() }).from(table.supplier);
 	const [productCount] = await db.select({ count: count() }).from(table.product);
 
-	// Order analytics
+	// Get selected project info
+	let selectedProject = null;
+	if (projectId) {
+		const [project] = await db
+			.select()
+			.from(table.project)
+			.where(eq(table.project.id, projectId));
+		selectedProject = project || null;
+	}
+
+	// Order analytics - filtered by project if selected
+	const orderFilter = projectId
+		? and(eq(table.order.status, 'approved'), eq(table.order.projectId, projectId))
+		: eq(table.order.status, 'approved');
+
 	const [approvedSpend] = await db
 		.select({ total: sum(table.order.totalCents) })
 		.from(table.order)
-		.where(eq(table.order.status, 'approved'));
+		.where(orderFilter);
+
+	const pendingFilter = projectId
+		? and(eq(table.order.status, 'pending'), eq(table.order.projectId, projectId))
+		: eq(table.order.status, 'pending');
 
 	const [pendingOrders] = await db
 		.select({
@@ -21,12 +40,16 @@ export const load: PageServerLoad = async () => {
 			total: sum(table.order.totalCents)
 		})
 		.from(table.order)
-		.where(eq(table.order.status, 'pending'));
+		.where(pendingFilter);
 
-	const [totalOrders] = await db.select({ count: count() }).from(table.order);
+	const totalFilter = projectId ? eq(table.order.projectId, projectId) : undefined;
+	const [totalOrders] = await db
+		.select({ count: count() })
+		.from(table.order)
+		.where(totalFilter);
 
-	// Recent orders (last 10)
-	const recentOrders = await db
+	// Recent orders (last 10) - filtered by project if selected
+	const recentOrdersQuery = db
 		.select({
 			order: table.order,
 			project: table.project,
@@ -34,26 +57,17 @@ export const load: PageServerLoad = async () => {
 		})
 		.from(table.order)
 		.innerJoin(table.project, eq(table.order.projectId, table.project.id))
-		.innerJoin(table.user, eq(table.order.workerId, table.user.id))
-		.orderBy(desc(table.order.createdAt))
-		.limit(10);
+		.innerJoin(table.user, eq(table.order.workerId, table.user.id));
 
-	// Spending by project (approved orders)
-	const spendByProject = await db
-		.select({
-			projectId: table.order.projectId,
-			projectName: table.project.name,
-			total: sum(table.order.totalCents),
-			orderCount: count()
-		})
-		.from(table.order)
-		.innerJoin(table.project, eq(table.order.projectId, table.project.id))
-		.where(eq(table.order.status, 'approved'))
-		.groupBy(table.order.projectId, table.project.name);
+	const recentOrders = projectId
+		? await recentOrdersQuery
+				.where(eq(table.order.projectId, projectId))
+				.orderBy(desc(table.order.createdAt))
+				.limit(10)
+		: await recentOrdersQuery.orderBy(desc(table.order.createdAt)).limit(10);
 
 	return {
 		counts: {
-			projects: projectCount.count,
 			suppliers: supplierCount.count,
 			products: productCount.count
 		},
@@ -73,11 +87,7 @@ export const load: PageServerLoad = async () => {
 			projectName: r.project.name,
 			workerName: r.worker.username
 		})),
-		spendByProject: spendByProject.map((p) => ({
-			projectId: p.projectId,
-			projectName: p.projectName,
-			totalCents: Number(p.total) || 0,
-			orderCount: p.orderCount
-		}))
+		selectedProject,
+		projectId
 	};
 };
