@@ -49,6 +49,20 @@ export const projectWorker = pgTable(
 	(table) => [primaryKey({ columns: [table.projectId, table.workerId] })]
 );
 
+// Product-Project assignments (many-to-many)
+export const projectProduct = pgTable(
+	'project_product',
+	{
+		projectId: text('project_id')
+			.references(() => project.id)
+			.notNull(),
+		productId: text('product_id')
+			.references(() => product.id)
+			.notNull()
+	},
+	(table) => [primaryKey({ columns: [table.projectId, table.productId] })]
+);
+
 // Suppliers
 export const supplier = pgTable('supplier', {
 	id: text('id').primaryKey(),
