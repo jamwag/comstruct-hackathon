@@ -1,7 +1,7 @@
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import { desc, eq } from 'drizzle-orm';
-import type { PageServerLoad } from './$types';
+import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
 	const categoryFilter = url.searchParams.get('category');
@@ -37,4 +37,17 @@ export const load: PageServerLoad = async ({ url }) => {
 			supplier: supplierFilter
 		}
 	};
+};
+
+export const actions: Actions = {
+	deleteAll: async () => {
+		// Delete all product-construction type associations first
+		await db.delete(table.productConstructionType);
+		// Delete all project-product associations
+		await db.delete(table.projectProduct);
+		// Delete all products
+		await db.delete(table.product);
+
+		return { success: true };
+	}
 };

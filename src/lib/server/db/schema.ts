@@ -1,6 +1,7 @@
-import { pgTable, pgEnum, integer, text, timestamp, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, integer, text, timestamp, primaryKey, boolean } from 'drizzle-orm/pg-core';
 
 export const userRoleEnum = pgEnum('user_role', ['worker', 'manager']);
+export const consumableTypeEnum = pgEnum('consumable_type', ['single-use', 'reusable']);
 
 export const user = pgTable('user', {
 	id: text('id').primaryKey(),
@@ -90,12 +91,42 @@ export const product = pgTable('product', {
 		.references(() => supplier.id)
 		.notNull(),
 	categoryId: text('category_id').references(() => productCategory.id),
+	subcategoryId: text('subcategory_id').references(() => productCategory.id),
 	sku: text('sku').notNull(),
 	name: text('name').notNull(),
 	description: text('description'),
 	unit: text('unit').notNull(),
 	pricePerUnit: integer('price_per_unit').notNull(),
+	manufacturer: text('manufacturer'),
+	packagingUnit: text('packaging_unit'),
+	hazardous: boolean('hazardous').default(false),
+	consumableType: consumableTypeEnum('consumable_type'),
+	minOrderQty: integer('min_order_qty').default(1),
+	supplierSku: text('supplier_sku'),
 	createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull()
 });
 
 export type Product = typeof product.$inferSelect;
+
+// Construction Types (Hochbau, Tiefbau, Rohbau, etc.)
+export const constructionType = pgTable('construction_type', {
+	id: text('id').primaryKey(),
+	name: text('name').notNull(),
+	sortOrder: integer('sort_order').default(0)
+});
+
+export type ConstructionType = typeof constructionType.$inferSelect;
+
+// Product-ConstructionType junction (many-to-many)
+export const productConstructionType = pgTable(
+	'product_construction_type',
+	{
+		productId: text('product_id')
+			.references(() => product.id, { onDelete: 'cascade' })
+			.notNull(),
+		constructionTypeId: text('construction_type_id')
+			.references(() => constructionType.id, { onDelete: 'cascade' })
+			.notNull()
+	},
+	(table) => [primaryKey({ columns: [table.productId, table.constructionTypeId] })]
+);

@@ -1,10 +1,19 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
+	let isDeleting = $state(false);
+
 	function formatPrice(cents: number): string {
 		return (cents / 100).toFixed(2);
+	}
+
+	function confirmDeleteAll(event: Event) {
+		if (!confirm(`Are you sure you want to delete all ${data.products.length} products? This cannot be undone.`)) {
+			event.preventDefault();
+		}
 	}
 </script>
 
@@ -15,12 +24,31 @@
 <div class="space-y-6">
 	<div class="flex justify-between items-center">
 		<h2 class="text-2xl font-bold text-gray-900">Products</h2>
-		<a
-			href="/manager/products/upload"
-			class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-		>
-			Import from Excel
-		</a>
+		<div class="flex gap-2">
+			{#if data.products.length > 0}
+				<form method="post" action="?/deleteAll" use:enhance={() => {
+					isDeleting = true;
+					return async ({ update }) => {
+						await update();
+						isDeleting = false;
+					};
+				}} onsubmit={confirmDeleteAll}>
+					<button
+						type="submit"
+						disabled={isDeleting}
+						class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+					>
+						{isDeleting ? 'Deleting...' : 'Delete All'}
+					</button>
+				</form>
+			{/if}
+			<a
+				href="/manager/products/upload"
+				class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+			>
+				Import from Excel
+			</a>
+		</div>
 	</div>
 
 	{#if data.suppliers.length === 0}
