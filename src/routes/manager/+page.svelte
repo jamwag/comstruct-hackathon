@@ -7,6 +7,9 @@
 
 	let { data }: { data: PageData } = $props();
 
+	let showCMaterialInfo = $state(false);
+	let popoverRef = $state<HTMLDivElement | null>(null);
+
 	// Sync URL with store on mount
 	onMount(() => {
 		const urlProjectId = $page.url.searchParams.get('project');
@@ -21,6 +24,15 @@
 			url.searchParams.set('project', storeProjectId);
 			goto(url.toString(), { replaceState: true, keepFocus: true });
 		}
+
+		// Close popover on click outside
+		function handleClickOutside(event: MouseEvent) {
+			if (popoverRef && !popoverRef.contains(event.target as Node)) {
+				showCMaterialInfo = false;
+			}
+		}
+		document.addEventListener('click', handleClickOutside);
+		return () => document.removeEventListener('click', handleClickOutside);
 	});
 
 	function formatPrice(cents: number): string {
@@ -59,7 +71,51 @@
 	<div>
 		<h2 class="text-2xl font-bold text-gray-900">Welcome, {data.user.username}!</h2>
 		<p class="mt-1 text-gray-600">
-			Manage procurement, review orders, and control C-material spending.
+			Manage procurement, review orders, and control
+			<span class="relative inline-block" bind:this={popoverRef}>
+				<button
+					type="button"
+					class="text-blue-600 hover:text-blue-800 underline decoration-dotted underline-offset-2 cursor-pointer"
+					onclick={(e) => {
+						e.stopPropagation();
+						showCMaterialInfo = !showCMaterialInfo;
+					}}
+				>
+					C-material
+				</button>
+				{#if showCMaterialInfo}
+					<div
+						class="absolute left-0 top-full mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 p-4 z-50"
+					>
+						<div class="flex justify-between items-start mb-2">
+							<h4 class="font-semibold text-gray-900">About C-Materials</h4>
+							<button
+								type="button"
+								class="text-gray-400 hover:text-gray-600"
+								onclick={() => (showCMaterialInfo = false)}
+							>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+								</svg>
+							</button>
+						</div>
+						<p class="text-sm text-gray-700">
+							<strong>C-materials</strong> are low-value, high-volume consumables and site supplies that
+							represent roughly 5% of spend but 60% of all orders.
+						</p>
+						<ul class="mt-2 text-sm text-gray-600 space-y-1">
+							<li>Fasteners: screws, plugs, nails</li>
+							<li>Consumables: tapes, foils, sealants</li>
+							<li>Site supplies: PPE, gloves, masks</li>
+							<li>Small tools: drill bits, blades</li>
+						</ul>
+						<p class="mt-2 text-sm text-gray-700">
+							Streamlining C-material ordering reduces administrative overhead.
+						</p>
+					</div>
+				{/if}
+			</span>
+			spending.
 		</p>
 	</div>
 
@@ -165,7 +221,7 @@
 							<tr class="hover:bg-gray-50">
 								<td class="px-6 py-4 whitespace-nowrap">
 									<div class="flex items-center gap-2">
-										<span class="font-medium text-gray-900">#{order.orderNumber}</span>
+										<span class="font-medium text-gray-900">{order.orderNumber}</span>
 										{#if order.priority === 'urgent'}
 											<span class="px-1.5 py-0.5 text-xs bg-red-100 text-red-700 rounded">Urgent</span>
 										{/if}
@@ -190,28 +246,5 @@
 				</table>
 			</div>
 		{/if}
-	</div>
-
-	<!-- About C-Materials -->
-	<div class="bg-white rounded-lg shadow">
-		<div class="px-6 py-4 border-b">
-			<h3 class="text-lg font-semibold text-gray-900">About C-Materials</h3>
-		</div>
-		<div class="p-6">
-			<p class="text-gray-700">
-				<strong>C-materials</strong> are low-value, high-volume consumables and site supplies that
-				represent roughly 5% of spend but 60% of all orders. This includes:
-			</p>
-			<ul class="mt-3 list-disc list-inside text-gray-600 space-y-1">
-				<li>Fasteners: screws, plugs, nails</li>
-				<li>Consumables: tapes, foils, sealants, spray cans</li>
-				<li>Site supplies: PPE, gloves, masks, batteries</li>
-				<li>Small tools: drill bits, blades</li>
-			</ul>
-			<p class="mt-3 text-gray-700">
-				By streamlining C-material ordering, you reduce administrative overhead and give workers a
-				simple way to get what they need on site.
-			</p>
-		</div>
 	</div>
 </div>

@@ -11,6 +11,15 @@
 
 	const currentProjectId = $derived($managerSelectedProjectId);
 	const selectedProject = $derived(data.projects.find((p) => p.id === currentProjectId));
+	const currentPath = $derived($page.url.pathname);
+
+	// Check if a nav item is active
+	function isActive(href: string): boolean {
+		if (href === '/manager') {
+			return currentPath === '/manager';
+		}
+		return currentPath.startsWith(href);
+	}
 
 	onMount(() => {
 		managerSelectedProjectId.initWithDefault(data.projects);
@@ -27,48 +36,68 @@
 </script>
 
 <!-- Manager dashboard layout -->
-<div class="min-h-screen bg-gray-50 flex">
-	<aside class="w-64 bg-white border-r min-h-screen p-4 flex flex-col">
+<div class="h-screen bg-gray-50 flex overflow-hidden">
+	<aside class="w-64 bg-white border-r h-screen p-4 flex flex-col flex-shrink-0">
 		<h1 class="text-xl font-bold text-gray-900 mb-6">ComStruct</h1>
 		<nav class="space-y-1 flex-1">
 			<a
 				href="/manager"
-				class="block px-3 py-2 rounded-md hover:bg-gray-100 text-gray-700 font-medium"
+				class="block px-3 py-2 rounded-md font-medium {isActive('/manager')
+					? 'bg-blue-50 text-blue-700'
+					: 'text-gray-700 hover:bg-gray-100'}"
 			>
 				Dashboard
 			</a>
 			<a
 				href="/manager/suppliers"
-				class="block px-3 py-2 rounded-md hover:bg-gray-100 text-gray-700 font-medium"
+				class="block px-3 py-2 rounded-md font-medium {isActive('/manager/suppliers')
+					? 'bg-blue-50 text-blue-700'
+					: 'text-gray-700 hover:bg-gray-100'}"
 			>
 				Suppliers
 			</a>
 			<a
 				href="/manager/products"
-				class="block px-3 py-2 rounded-md hover:bg-gray-100 text-gray-700 font-medium"
+				class="block px-3 py-2 rounded-md font-medium {isActive('/manager/products')
+					? 'bg-blue-50 text-blue-700'
+					: 'text-gray-700 hover:bg-gray-100'}"
 			>
 				Products
 			</a>
 			<a
 				href="/manager/orders"
-				class="block px-3 py-2 rounded-md hover:bg-gray-100 text-gray-700 font-medium"
+				class="block px-3 py-2 rounded-md font-medium {isActive('/manager/orders')
+					? 'bg-blue-50 text-blue-700'
+					: 'text-gray-700 hover:bg-gray-100'}"
 			>
 				Orders
 			</a>
 		</nav>
 		<div class="border-t pt-4">
-			<div class="text-sm text-gray-600 mb-2">{data.user.username}</div>
-			<form method="post" action="/logout" use:enhance>
-				<button
-					class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
-				>
-					Sign out
-				</button>
-			</form>
+			<div class="flex items-center gap-3 px-2 py-2">
+				<div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
+					{data.user.username.slice(0, 2).toUpperCase()}
+				</div>
+				<div class="flex-1 min-w-0">
+					<div class="text-sm font-medium text-gray-900 truncate">{data.user.username}</div>
+					<div class="text-xs text-gray-500">Manager</div>
+				</div>
+				<form method="post" action="/logout" use:enhance>
+					<button
+						type="submit"
+						class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+						title="Sign out"
+					>
+						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+						</svg>
+					</button>
+				</form>
+			</div>
 		</div>
 	</aside>
 
-	<div class="flex-1">
+	<div class="flex-1 flex flex-col overflow-hidden">
 		<header class="bg-white border-b px-6 py-4 flex items-center justify-between">
 			<div class="flex items-center gap-3">
 				{#if data.projects.length > 0}
@@ -117,7 +146,7 @@
 			<h2 class="text-lg font-semibold text-gray-900">Manager Portal</h2>
 		</header>
 
-		<main class="p-6">
+		<main class="flex-1 overflow-y-auto p-6">
 			{@render children()}
 		</main>
 	</div>
