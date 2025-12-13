@@ -27,49 +27,28 @@ export async function extractOrderIntent(transcription: string): Promise<VoiceIn
 
 	const anthropic = new Anthropic({ apiKey });
 
-	const prompt = `You are helping a construction worker order supplies. Extract what they want to order from their spoken request.
+	const prompt = `Extract what products a construction worker wants to order from their voice request.
 
-The worker might use informal language, abbreviations, or describe items by their use case rather than exact product names. Construction workers often say things like:
-- "I need some screws" (meaning various fasteners)
-- "Give me a couple boxes of gloves" (PPE/safety equipment)
-- "The red spray paint" (coatings/chemicals)
-- "Something to seal the window" (sealants)
-- German/Swiss terms mixed with English
+Request: "${transcription}"
 
-Spoken request: "${transcription}"
-
-Return a JSON object with this exact structure:
+Return JSON:
 {
   "items": [
-    {
-      "description": "normalized description of what they want",
-      "quantity": 1,
-      "searchTerms": ["term1", "term2", "term3"],
-      "confidence": 0.9
-    }
-  ],
-  "clarificationNeeded": null
+    {"description": "product name", "quantity": 1}
+  ]
 }
 
 Rules:
-- "description" should be a clear, normalized description (e.g., "wood screws", "safety gloves", "spray paint")
-- "quantity" should be a number (default to 1 if not specified, "a couple" = 2, "a few" = 3, "some" = 1)
-- "searchTerms" should include 3-5 keywords that might match product names/descriptions in a database:
-  - Include the main item type (e.g., "screw", "glove", "paint")
-  - Include variations and related terms (e.g., "fastener", "PPE", "coating")
-  - Include size/specifications if mentioned (e.g., "6mm", "large", "red")
-- "confidence" is 0.0-1.0 indicating how sure you are about what they want
-- If the request is completely unclear or not related to construction materials, set "clarificationNeeded" to a short question
+- "description": Keep the user's words mostly intact (e.g., "safety gloves" stays "safety gloves")
+- "quantity": Extract number (default 1, "couple"=2, "few"=3, "some"=1, "a box of"=1)
+- Multiple items? Return multiple objects in the array
+- Keep it simple - just extract WHAT they want and HOW MANY
 
-Common construction material categories:
-- Fastening: screws, nails, plugs, anchors, bolts
-- Safety/PPE: gloves, glasses, helmets, vests, masks
-- Tools: drill bits, blades, measuring tools
-- Electrical: cables, connectors, switches
-- Coatings & Chemicals: paints, sprays, sealants, adhesives
-- Site General: tape, foil, bags, cleaning supplies
+Examples:
+- "I need some safety gloves" → [{"description": "safety gloves", "quantity": 1}]
+- "give me 5 screws and some tape" → [{"description": "screws", "quantity": 5}, {"description": "tape", "quantity": 1}]
 
-Return ONLY valid JSON, no other text.`;
+Return ONLY valid JSON.`;
 
 	try {
 		const response = await anthropic.messages.create({

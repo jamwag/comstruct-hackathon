@@ -77,25 +77,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	// Extract ordering intent from the transcription
 	const intent = await extractOrderIntent(transcription);
 
-	// If clarification is needed, return early
-	if (intent.clarificationNeeded) {
-		const result: ProcessedVoiceResult = {
-			transcription,
-			intent: {
-				items: intent.items.map((item) => ({
-					description: item.description,
-					quantity: item.quantity,
-					confidence: item.confidence
-				})),
-				clarificationNeeded: intent.clarificationNeeded
-			},
-			recommendations: [],
-			noMatchMessage: intent.clarificationNeeded
-		};
-		return json(result);
-	}
-
-	// Search for products for each extracted item
+	// Search for products for each extracted item (no clarification - just search)
 	const recommendations: ProcessedVoiceResult['recommendations'] = [];
 	let totalProductsFound = 0;
 
@@ -104,7 +86,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			projectId,
 			item.searchTerms,
 			item.description,
-			5 // max 5 products per item
+			8 // Show up to 8 products per item for better selection
 		);
 
 		totalProductsFound += searchResult.products.length;
