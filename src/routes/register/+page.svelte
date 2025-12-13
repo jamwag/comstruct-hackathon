@@ -3,7 +3,7 @@
 	import type { ActionData } from './$types';
 
 	let { form }: { form: ActionData } = $props();
-	let selectedRole = $state<'worker' | 'manager'>('worker');
+	let selectedRole = $state<'worker' | 'project_manager' | 'manager'>('worker');
 </script>
 
 <svelte:head>
@@ -25,20 +25,29 @@
 					<button
 						type="button"
 						onclick={() => (selectedRole = 'worker')}
-						class="flex-1 py-3 text-center transition-colors {selectedRole === 'worker'
+						class="flex-1 py-3 text-center text-sm transition-colors {selectedRole === 'worker'
 							? 'bg-blue-600 text-white'
 							: 'bg-white text-gray-700 hover:bg-gray-50'}"
 					>
-						Worker / Foreman
+						Worker
+					</button>
+					<button
+						type="button"
+						onclick={() => (selectedRole = 'project_manager')}
+						class="flex-1 py-3 text-center text-sm transition-colors border-x border-gray-300 {selectedRole === 'project_manager'
+							? 'bg-blue-600 text-white border-blue-600'
+							: 'bg-white text-gray-700 hover:bg-gray-50'}"
+					>
+						Project Manager
 					</button>
 					<button
 						type="button"
 						onclick={() => (selectedRole = 'manager')}
-						class="flex-1 py-3 text-center transition-colors {selectedRole === 'manager'
+						class="flex-1 py-3 text-center text-sm transition-colors {selectedRole === 'manager'
 							? 'bg-blue-600 text-white'
 							: 'bg-white text-gray-700 hover:bg-gray-50'}"
 					>
-						Manager / Procurement
+						Procurement
 					</button>
 				</div>
 			</fieldset>

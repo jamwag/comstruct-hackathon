@@ -19,7 +19,7 @@ export const actions: Actions = {
 		const formData = await event.request.formData();
 		const username = formData.get('username');
 		const password = formData.get('password');
-		const role = formData.get('role') as 'worker' | 'manager';
+		const role = formData.get('role') as 'worker' | 'project_manager' | 'manager';
 
 		if (!validateUsername(username)) {
 			return fail(400, { message: 'Invalid username (3-31 chars, alphanumeric, underscore, dash)' });
@@ -27,7 +27,7 @@ export const actions: Actions = {
 		if (!validatePassword(password)) {
 			return fail(400, { message: 'Invalid password (6-255 characters)' });
 		}
-		if (!['worker', 'manager'].includes(role)) {
+		if (!['worker', 'project_manager', 'manager'].includes(role)) {
 			return fail(400, { message: 'Invalid role' });
 		}
 

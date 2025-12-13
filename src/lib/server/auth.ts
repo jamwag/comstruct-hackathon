@@ -80,6 +80,7 @@ export function deleteSessionTokenCookie(event: RequestEvent) {
 	});
 }
 
-export function getRedirectPathForRole(role: 'worker' | 'manager'): string {
-	return role === 'manager' ? '/manager' : '/worker';
+export function getRedirectPathForRole(role: 'worker' | 'project_manager' | 'manager'): string {
+	// Both manager and project_manager go to /manager
+	return role === 'worker' ? '/worker' : '/manager';
 }

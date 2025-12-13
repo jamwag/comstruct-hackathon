@@ -13,6 +13,11 @@
 	const selectedProject = $derived(data.projects.find((p) => p.id === currentProjectId));
 	const currentPath = $derived($page.url.pathname);
 
+	// Role-based visibility
+	const isProcurement = $derived(data.user.role === 'manager');
+	const isProjectManager = $derived(data.user.role === 'project_manager');
+	const roleLabel = $derived(isProcurement ? 'Procurement' : 'Project Manager');
+
 	// Check if a nav item is active
 	function isActive(href: string): boolean {
 		if (href === '/manager') {
@@ -48,14 +53,16 @@
 			>
 				Dashboard
 			</a>
-			<a
-				href="/manager/suppliers"
-				class="block px-3 py-2 rounded-md font-medium {isActive('/manager/suppliers')
-					? 'bg-blue-50 text-blue-700'
-					: 'text-gray-700 hover:bg-gray-100'}"
-			>
-				Suppliers
-			</a>
+			{#if isProcurement}
+				<a
+					href="/manager/suppliers"
+					class="block px-3 py-2 rounded-md font-medium {isActive('/manager/suppliers')
+						? 'bg-blue-50 text-blue-700'
+						: 'text-gray-700 hover:bg-gray-100'}"
+				>
+					Suppliers
+				</a>
+			{/if}
 			<a
 				href="/manager/products"
 				class="block px-3 py-2 rounded-md font-medium {isActive('/manager/products')
@@ -80,7 +87,7 @@
 				</div>
 				<div class="flex-1 min-w-0">
 					<div class="text-sm font-medium text-gray-900 truncate">{data.user.username}</div>
-					<div class="text-xs text-gray-500">Manager</div>
+					<div class="text-xs text-gray-500">{roleLabel}</div>
 				</div>
 				<form method="post" action="/logout" use:enhance>
 					<button

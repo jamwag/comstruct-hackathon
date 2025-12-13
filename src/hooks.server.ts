@@ -41,12 +41,12 @@ const handleRouteProtection: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	// Protect /manager/* routes
+	// Protect /manager/* routes - allow both manager and project_manager
 	if (pathname.startsWith('/manager')) {
 		if (!user) {
 			throw redirect(302, '/login');
 		}
-		if (user.role !== 'manager') {
+		if (user.role !== 'manager' && user.role !== 'project_manager') {
 			throw redirect(302, '/worker');
 		}
 	}

@@ -3,7 +3,8 @@ import * as table from '$lib/server/db/schema';
 import { desc, eq } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, parent }) => {
+	const { user } = await parent();
 	const categoryFilter = url.searchParams.get('category');
 	const supplierFilter = url.searchParams.get('supplier');
 
@@ -32,6 +33,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		products,
 		categories,
 		suppliers,
+		user,
 		filters: {
 			category: categoryFilter,
 			supplier: supplierFilter

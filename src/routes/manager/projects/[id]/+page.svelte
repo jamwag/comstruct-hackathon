@@ -9,6 +9,10 @@
 	const assignedWorkerIds = $derived(new Set(data.assignedWorkerIds));
 	const assignedProductIds = $derived(new Set(data.assignedProductIds));
 
+	// Role-based visibility
+	const isProjectManager = data.userRole === 'project_manager';
+	const isProcurement = data.userRole === 'manager';
+
 	let productSearch = $state('');
 
 	// Filter products by search
@@ -104,6 +108,95 @@
 			<p class="mt-2 text-sm text-green-600">Threshold updated successfully.</p>
 		{/if}
 	</div>
+
+	<!-- Preferred Suppliers - Only visible to Project Managers -->
+	{#if isProjectManager}
+		<div class="bg-white rounded-lg shadow p-6">
+			<h3 class="text-lg font-semibold text-gray-900 mb-2">Preferred Suppliers</h3>
+			<p class="text-sm text-gray-500 mb-4">
+				Rank your preferred suppliers for this project. Orders will prioritize suppliers based on this ranking.
+			</p>
+
+			{#if data.projectSuppliers.length > 0}
+				<div class="space-y-2 mb-4">
+					{#each data.projectSuppliers as ps, index (ps.supplier.id)}
+						<div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+							<span class="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+								{ps.preferenceRank}
+							</span>
+							<span class="flex-1 font-medium text-gray-900">{ps.supplier.name}</span>
+							<div class="flex gap-1 shrink-0">
+								<form method="post" action="?/moveSupplierUp" use:enhance>
+									<input type="hidden" name="supplierId" value={ps.supplier.id} />
+									<button
+										type="submit"
+										disabled={index === 0}
+										class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+										title="Move up"
+									>
+										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+										</svg>
+									</button>
+								</form>
+								<form method="post" action="?/moveSupplierDown" use:enhance>
+									<input type="hidden" name="supplierId" value={ps.supplier.id} />
+									<button
+										type="submit"
+										disabled={index === data.projectSuppliers.length - 1}
+										class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+										title="Move down"
+									>
+										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+										</svg>
+									</button>
+								</form>
+								<form method="post" action="?/removeProjectSupplier" use:enhance>
+									<input type="hidden" name="supplierId" value={ps.supplier.id} />
+									<button
+										type="submit"
+										class="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-100 rounded transition-colors"
+										title="Remove"
+									>
+										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+										</svg>
+									</button>
+								</form>
+							</div>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="text-gray-500 text-sm mb-4">No preferred suppliers set for this project yet.</p>
+			{/if}
+
+			{#if data.availableSuppliers.length > 0}
+				<form method="post" action="?/addProjectSupplier" use:enhance class="flex gap-2">
+					<select
+						name="supplierId"
+						class="flex-1 rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+					>
+						<option value="">Select a supplier to add...</option>
+						{#each data.availableSuppliers as supplier (supplier.id)}
+							<option value={supplier.id}>{supplier.name}</option>
+						{/each}
+					</select>
+					<button
+						type="submit"
+						class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+					>
+						Add
+					</button>
+				</form>
+			{:else if data.projectSuppliers.length > 0}
+				<p class="text-gray-500 text-sm">All available suppliers have been added.</p>
+			{:else}
+				<p class="text-gray-500 text-sm">No suppliers available. Contact procurement to add suppliers.</p>
+			{/if}
+		</div>
+	{/if}
 
 	<div class="bg-white rounded-lg shadow p-6">
 		<h3 class="text-lg font-semibold text-gray-900 mb-4">Assigned Workers</h3>

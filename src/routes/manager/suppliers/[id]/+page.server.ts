@@ -4,7 +4,12 @@ import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
+	// Procurement-only route
+	if (locals.user?.role !== 'manager') {
+		throw redirect(302, '/manager');
+	}
+
 	const [supplier] = await db.select().from(table.supplier).where(eq(table.supplier.id, params.id));
 
 	if (!supplier) {

@@ -9,7 +9,7 @@ import {
 	foreignKey
 } from 'drizzle-orm/pg-core';
 
-export const userRoleEnum = pgEnum('user_role', ['worker', 'manager']);
+export const userRoleEnum = pgEnum('user_role', ['worker', 'project_manager', 'manager']);
 export const consumableTypeEnum = pgEnum('consumable_type', ['single-use', 'reusable']);
 export const orderStatusEnum = pgEnum('order_status', ['pending', 'approved', 'rejected']);
 export const orderPriorityEnum = pgEnum('order_priority', ['normal', 'urgent']);
@@ -18,6 +18,7 @@ export const supplierResponseStatusEnum = pgEnum('supplier_response_status', [
 	'rejected',
 	'partial'
 ]);
+export const materialTypeEnum = pgEnum('material_type', ['c_material', 'a_material']);
 
 export const user = pgTable('user', {
 	id: text('id').primaryKey(),
@@ -27,7 +28,7 @@ export const user = pgTable('user', {
 	role: userRoleEnum('role').notNull().default('worker')
 });
 
-export type UserRole = 'worker' | 'manager';
+export type UserRole = 'worker' | 'project_manager' | 'manager';
 
 export const session = pgTable('session', {
 	id: text('id').primaryKey(),
@@ -81,6 +82,24 @@ export const projectProduct = pgTable(
 	(table) => [primaryKey({ columns: [table.projectId, table.productId] })]
 );
 
+// Project-Supplier preferences (many-to-many with ranking)
+export const projectSupplier = pgTable(
+	'project_supplier',
+	{
+		projectId: text('project_id')
+			.references(() => project.id, { onDelete: 'cascade' })
+			.notNull(),
+		supplierId: text('supplier_id')
+			.references(() => supplier.id, { onDelete: 'cascade' })
+			.notNull(),
+		preferenceRank: integer('preference_rank').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull()
+	},
+	(table) => [primaryKey({ columns: [table.projectId, table.supplierId] })]
+);
+
+export type ProjectSupplier = typeof projectSupplier.$inferSelect;
+
 // Suppliers
 export const supplier = pgTable('supplier', {
 	id: text('id').primaryKey(),
@@ -121,10 +140,12 @@ export const product = pgTable('product', {
 	consumableType: consumableTypeEnum('consumable_type'),
 	minOrderQty: integer('min_order_qty').default(1),
 	supplierSku: text('supplier_sku'),
+	materialType: materialTypeEnum('material_type').default('c_material').notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull()
 });
 
 export type Product = typeof product.$inferSelect;
+export type MaterialType = 'c_material' | 'a_material';
 
 // Construction Types (Hochbau, Tiefbau, Rohbau, etc.)
 export const constructionType = pgTable('construction_type', {

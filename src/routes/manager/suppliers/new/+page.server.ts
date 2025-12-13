@@ -4,7 +4,11 @@ import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ locals }) => {
+	// Procurement-only route
+	if (locals.user?.role !== 'manager') {
+		throw redirect(302, '/manager');
+	}
 	return {};
 };
 

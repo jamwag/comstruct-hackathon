@@ -1,4 +1,4 @@
-import { fail } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import { encodeBase32LowerCase } from '@oslojs/encoding';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
@@ -8,7 +8,12 @@ import * as XLSX from 'xlsx';
 import { mapCsvColumns, classifyProduct, classifyProductsBatch, extractProductsFromPdf } from '$lib/server/ai';
 import type { ColumnMapping, ExtractedProduct } from '$lib/server/ai';
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+	// Procurement-only route
+	if (locals.user?.role !== 'manager') {
+		throw redirect(302, '/manager');
+	}
+
 	const suppliers = await db.select().from(table.supplier).orderBy(table.supplier.name);
 
 	// Load categories with hierarchy info

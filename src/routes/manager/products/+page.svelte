@@ -6,6 +6,9 @@
 
 	let isDeleting = $state(false);
 
+	// Role-based visibility
+	const isProcurement = data.user?.role === 'manager';
+
 	function formatPrice(cents: number): string {
 		return (cents / 100).toFixed(2);
 	}
@@ -24,31 +27,33 @@
 <div class="space-y-6">
 	<div class="flex justify-between items-center">
 		<h2 class="text-2xl font-bold text-gray-900">Products</h2>
-		<div class="flex gap-2">
-			{#if data.products.length > 0}
-				<form method="post" action="?/deleteAll" use:enhance={() => {
-					isDeleting = true;
-					return async ({ update }) => {
-						await update();
-						isDeleting = false;
-					};
-				}} onsubmit={confirmDeleteAll}>
-					<button
-						type="submit"
-						disabled={isDeleting}
-						class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
-					>
-						{isDeleting ? 'Deleting...' : 'Delete All'}
-					</button>
-				</form>
-			{/if}
-			<a
-				href="/manager/products/upload"
-				class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-			>
-				Import Products
-			</a>
-		</div>
+		{#if isProcurement}
+			<div class="flex gap-2">
+				{#if data.products.length > 0}
+					<form method="post" action="?/deleteAll" use:enhance={() => {
+						isDeleting = true;
+						return async ({ update }) => {
+							await update();
+							isDeleting = false;
+						};
+					}} onsubmit={confirmDeleteAll}>
+						<button
+							type="submit"
+							disabled={isDeleting}
+							class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+						>
+							{isDeleting ? 'Deleting...' : 'Delete All'}
+						</button>
+					</form>
+				{/if}
+				<a
+					href="/manager/products/upload"
+					class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+				>
+					Import Products
+				</a>
+			</div>
+		{/if}
 	</div>
 
 	{#if data.suppliers.length === 0}
@@ -75,6 +80,9 @@
 							Name
 						</th>
 						<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+							Type
+						</th>
+						<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
 							Category
 						</th>
 						<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -90,12 +98,17 @@
 				</thead>
 				<tbody class="bg-white divide-y divide-gray-200">
 					{#each data.products as row (row.product.id)}
-						<tr class="hover:bg-gray-50">
+						<tr class="hover:bg-gray-50 {isProcurement ? 'cursor-pointer' : ''}" onclick={() => isProcurement && (window.location.href = `/manager/products/${row.product.id}`)}>
 							<td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">
 								{row.product.sku}
 							</td>
 							<td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
 								{row.product.name}
+							</td>
+							<td class="px-6 py-4 whitespace-nowrap">
+								<span class="px-2 py-1 text-xs font-medium rounded-full {row.product.materialType === 'a_material' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'}">
+									{row.product.materialType === 'a_material' ? 'A-Material' : 'C-Material'}
+								</span>
 							</td>
 							<td class="px-6 py-4 whitespace-nowrap text-gray-500">
 								{row.category?.name || '-'}

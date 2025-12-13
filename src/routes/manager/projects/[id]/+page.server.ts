@@ -1,10 +1,10 @@
 import { error, fail } from '@sveltejs/kit';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, max, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
 	const [project] = await db
 		.select()
 		.from(table.project)
@@ -52,13 +52,39 @@ export const load: PageServerLoad = async ({ params }) => {
 		.from(table.productCategory)
 		.orderBy(asc(table.productCategory.sortOrder));
 
+	// Get project suppliers with ranking (for project managers)
+	const projectSuppliers = await db
+		.select({
+			supplier: table.supplier,
+			preferenceRank: table.projectSupplier.preferenceRank
+		})
+		.from(table.projectSupplier)
+		.innerJoin(table.supplier, eq(table.projectSupplier.supplierId, table.supplier.id))
+		.where(eq(table.projectSupplier.projectId, params.id))
+		.orderBy(asc(table.projectSupplier.preferenceRank));
+
+	// Get all suppliers for adding new ones
+	const allSuppliers = await db
+		.select()
+		.from(table.supplier)
+		.orderBy(asc(table.supplier.name));
+
+	// Get IDs of already assigned suppliers
+	const assignedSupplierIds = new Set(projectSuppliers.map((ps) => ps.supplier.id));
+
+	// Available suppliers are those not yet assigned
+	const availableSuppliers = allSuppliers.filter((s) => !assignedSupplierIds.has(s.id));
+
 	return {
 		project,
 		allWorkers,
 		assignedWorkerIds: Array.from(assignedWorkerIds),
 		allProducts,
 		assignedProductIds,
-		categories
+		categories,
+		projectSuppliers,
+		availableSuppliers,
+		userRole: locals.user?.role
 	};
 };
 
@@ -183,5 +209,182 @@ export const actions: Actions = {
 			.where(eq(table.project.id, params.id));
 
 		return { success: true, thresholdUpdated: true };
+	},
+
+	addProjectSupplier: async ({ params, request, locals }) => {
+		// Only project managers can manage supplier preferences
+		if (locals.user?.role !== 'project_manager') {
+			return fail(403, { message: 'Not authorized' });
+		}
+
+		const formData = await request.formData();
+		const supplierId = formData.get('supplierId');
+
+		if (typeof supplierId !== 'string' || !supplierId) {
+			return fail(400, { message: 'Please select a supplier' });
+		}
+
+		// Get the current max rank for this project
+		const [maxRankResult] = await db
+			.select({ maxRank: max(table.projectSupplier.preferenceRank) })
+			.from(table.projectSupplier)
+			.where(eq(table.projectSupplier.projectId, params.id));
+
+		const nextRank = (maxRankResult?.maxRank ?? 0) + 1;
+
+		await db.insert(table.projectSupplier).values({
+			projectId: params.id,
+			supplierId,
+			preferenceRank: nextRank
+		});
+
+		return { success: true };
+	},
+
+	removeProjectSupplier: async ({ params, request, locals }) => {
+		// Only project managers can manage supplier preferences
+		if (locals.user?.role !== 'project_manager') {
+			return fail(403, { message: 'Not authorized' });
+		}
+
+		const formData = await request.formData();
+		const supplierId = formData.get('supplierId');
+
+		if (typeof supplierId !== 'string') {
+			return fail(400, { message: 'Invalid supplier ID' });
+		}
+
+		await db
+			.delete(table.projectSupplier)
+			.where(
+				and(
+					eq(table.projectSupplier.projectId, params.id),
+					eq(table.projectSupplier.supplierId, supplierId)
+				)
+			);
+
+		return { success: true };
+	},
+
+	moveSupplierUp: async ({ params, request, locals }) => {
+		// Only project managers can manage supplier preferences
+		if (locals.user?.role !== 'project_manager') {
+			return fail(403, { message: 'Not authorized' });
+		}
+
+		const formData = await request.formData();
+		const supplierId = formData.get('supplierId');
+
+		if (typeof supplierId !== 'string') {
+			return fail(400, { message: 'Invalid supplier ID' });
+		}
+
+		// Get current supplier's rank
+		const [current] = await db
+			.select({ preferenceRank: table.projectSupplier.preferenceRank })
+			.from(table.projectSupplier)
+			.where(
+				and(
+					eq(table.projectSupplier.projectId, params.id),
+					eq(table.projectSupplier.supplierId, supplierId)
+				)
+			);
+
+		if (!current || current.preferenceRank <= 1) {
+			return { success: true }; // Already at top
+		}
+
+		// Swap with the supplier above
+		const targetRank = current.preferenceRank - 1;
+
+		// Update the supplier above to take this one's rank
+		await db
+			.update(table.projectSupplier)
+			.set({ preferenceRank: current.preferenceRank })
+			.where(
+				and(
+					eq(table.projectSupplier.projectId, params.id),
+					eq(table.projectSupplier.preferenceRank, targetRank)
+				)
+			);
+
+		// Update this supplier to the target rank
+		await db
+			.update(table.projectSupplier)
+			.set({ preferenceRank: targetRank })
+			.where(
+				and(
+					eq(table.projectSupplier.projectId, params.id),
+					eq(table.projectSupplier.supplierId, supplierId)
+				)
+			);
+
+		return { success: true };
+	},
+
+	moveSupplierDown: async ({ params, request, locals }) => {
+		// Only project managers can manage supplier preferences
+		if (locals.user?.role !== 'project_manager') {
+			return fail(403, { message: 'Not authorized' });
+		}
+
+		const formData = await request.formData();
+		const supplierId = formData.get('supplierId');
+
+		if (typeof supplierId !== 'string') {
+			return fail(400, { message: 'Invalid supplier ID' });
+		}
+
+		// Get current supplier's rank
+		const [current] = await db
+			.select({ preferenceRank: table.projectSupplier.preferenceRank })
+			.from(table.projectSupplier)
+			.where(
+				and(
+					eq(table.projectSupplier.projectId, params.id),
+					eq(table.projectSupplier.supplierId, supplierId)
+				)
+			);
+
+		if (!current) {
+			return { success: true };
+		}
+
+		// Get max rank
+		const [maxResult] = await db
+			.select({ maxRank: max(table.projectSupplier.preferenceRank) })
+			.from(table.projectSupplier)
+			.where(eq(table.projectSupplier.projectId, params.id));
+
+		if (current.preferenceRank >= (maxResult?.maxRank ?? 0)) {
+			return { success: true }; // Already at bottom
+		}
+
+		// Swap with the supplier below
+		const targetRank = current.preferenceRank + 1;
+
+		// Update the supplier below to take this one's rank
+		await db
+			.update(table.projectSupplier)
+			.set({ preferenceRank: current.preferenceRank })
+			.where(
+				and(
+					eq(table.projectSupplier.projectId, params.id),
+					eq(table.projectSupplier.preferenceRank, targetRank)
+				)
+			);
+
+		// Update this supplier to the target rank
+		await db
+			.update(table.projectSupplier)
+			.set({ preferenceRank: targetRank })
+			.where(
+				and(
+					eq(table.projectSupplier.projectId, params.id),
+					eq(table.projectSupplier.supplierId, supplierId)
+				)
+			);
+
+		return { success: true };
 	}
 };

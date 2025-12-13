@@ -56,7 +56,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	let selectedSubcategory: (typeof mainCategories)[0] | null = null;
 	if (subcategoryId && selectedProjectId) {
 		selectedSubcategory = subcategories.find((c) => c.id === subcategoryId) || null;
-		// Only show products assigned to the selected project
+		// Only show C-materials assigned to the selected project (filter out A-materials)
 		const productRows = await db
 			.select({
 				id: table.product.id,
@@ -74,7 +74,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			.where(
 				and(
 					eq(table.product.subcategoryId, subcategoryId),
-					eq(table.projectProduct.projectId, selectedProjectId)
+					eq(table.projectProduct.projectId, selectedProjectId),
+					eq(table.product.materialType, 'c_material') // Only C-materials for workers
 				)
 			)
 			.orderBy(table.product.name);

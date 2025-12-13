@@ -8,7 +8,8 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 	if (!locals.user) {
 		throw redirect(302, '/login');
 	}
-	if (locals.user.role !== 'manager') {
+	// Allow both manager (procurement) and project_manager roles
+	if (locals.user.role !== 'manager' && locals.user.role !== 'project_manager') {
 		throw redirect(302, '/worker');
 	}
 

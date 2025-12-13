@@ -148,7 +148,7 @@ export async function searchProjectProducts(
 	maxResults: number = 5,
 	userId?: string
 ): Promise<SearchResult> {
-	// Get all products assigned to this project
+	// Get all C-material products assigned to this project (filter out A-materials)
 	const projectProducts = await db
 		.select({
 			product: table.product,
@@ -157,7 +157,12 @@ export async function searchProjectProducts(
 		.from(table.projectProduct)
 		.innerJoin(table.product, eq(table.projectProduct.productId, table.product.id))
 		.leftJoin(table.productCategory, eq(table.product.categoryId, table.productCategory.id))
-		.where(eq(table.projectProduct.projectId, projectId));
+		.where(
+			and(
+				eq(table.projectProduct.projectId, projectId),
+				eq(table.product.materialType, 'c_material') // Only C-materials for voice ordering
+			)
+		);
 
 	// If no products assigned to project, return empty
 	if (projectProducts.length === 0) {
