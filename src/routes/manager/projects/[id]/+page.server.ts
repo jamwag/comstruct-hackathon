@@ -89,7 +89,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
-	assign: async ({ params, request }) => {
+	assign: async ({ params, request, locals }) => {
+		// Only procurement can assign workers
+		if (locals.user?.role !== 'manager') {
+			return fail(403, { message: 'Not authorized' });
+		}
+
 		const formData = await request.formData();
 		const workerId = formData.get('workerId');
 
@@ -118,7 +123,12 @@ export const actions: Actions = {
 		return { success: true };
 	},
 
-	unassign: async ({ params, request }) => {
+	unassign: async ({ params, request, locals }) => {
+		// Only procurement can unassign workers
+		if (locals.user?.role !== 'manager') {
+			return fail(403, { message: 'Not authorized' });
+		}
+
 		const formData = await request.formData();
 		const workerId = formData.get('workerId');
 
@@ -138,7 +148,12 @@ export const actions: Actions = {
 		return { success: true };
 	},
 
-	assignProduct: async ({ params, request }) => {
+	assignProduct: async ({ params, request, locals }) => {
+		// Only procurement can assign products
+		if (locals.user?.role !== 'manager') {
+			return fail(403, { message: 'Not authorized' });
+		}
+
 		const formData = await request.formData();
 		const productId = formData.get('productId');
 
@@ -167,7 +182,12 @@ export const actions: Actions = {
 		return { success: true };
 	},
 
-	unassignProduct: async ({ params, request }) => {
+	unassignProduct: async ({ params, request, locals }) => {
+		// Only procurement can unassign products
+		if (locals.user?.role !== 'manager') {
+			return fail(403, { message: 'Not authorized' });
+		}
+
 		const formData = await request.formData();
 		const productId = formData.get('productId');
 
@@ -187,7 +207,12 @@ export const actions: Actions = {
 		return { success: true };
 	},
 
-	updateThreshold: async ({ params, request }) => {
+	updateThreshold: async ({ params, request, locals }) => {
+		// Only procurement can update threshold
+		if (locals.user?.role !== 'manager') {
+			return fail(403, { message: 'Not authorized' });
+		}
+
 		const formData = await request.formData();
 		const thresholdStr = formData.get('threshold');
 

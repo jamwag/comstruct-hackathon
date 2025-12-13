@@ -76,38 +76,40 @@
 		</p>
 	</div>
 
-	<!-- Order Settings -->
-	<div class="bg-white rounded-lg shadow p-6">
-		<h3 class="text-lg font-semibold text-gray-900 mb-4">Order Settings</h3>
-		<form method="post" action="?/updateThreshold" use:enhance class="flex items-end gap-4">
-			<div class="flex-1 max-w-xs">
-				<label for="threshold" class="block text-sm font-medium text-gray-700 mb-1">
-					Auto-Approval Threshold (CHF)
-				</label>
-				<input
-					type="number"
-					id="threshold"
-					name="threshold"
-					min="0"
-					step="0.01"
-					bind:value={thresholdValue}
-					class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-				/>
-				<p class="mt-1 text-xs text-gray-500">
-					Worker orders below this amount are automatically approved.
-				</p>
-			</div>
-			<button
-				type="submit"
-				class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-			>
-				Save
-			</button>
-		</form>
-		{#if form?.thresholdUpdated}
-			<p class="mt-2 text-sm text-green-600">Threshold updated successfully.</p>
-		{/if}
-	</div>
+	<!-- Order Settings - Procurement only -->
+	{#if isProcurement}
+		<div class="bg-white rounded-lg shadow p-6">
+			<h3 class="text-lg font-semibold text-gray-900 mb-4">Order Settings</h3>
+			<form method="post" action="?/updateThreshold" use:enhance class="flex items-end gap-4">
+				<div class="flex-1 max-w-xs">
+					<label for="threshold" class="block text-sm font-medium text-gray-700 mb-1">
+						Auto-Approval Threshold (CHF)
+					</label>
+					<input
+						type="number"
+						id="threshold"
+						name="threshold"
+						min="0"
+						step="0.01"
+						bind:value={thresholdValue}
+						class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+					/>
+					<p class="mt-1 text-xs text-gray-500">
+						Worker orders below this amount are automatically approved.
+					</p>
+				</div>
+				<button
+					type="submit"
+					class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+				>
+					Save
+				</button>
+			</form>
+			{#if form?.thresholdUpdated}
+				<p class="mt-2 text-sm text-green-600">Threshold updated successfully.</p>
+			{/if}
+		</div>
+	{/if}
 
 	<!-- Preferred Suppliers - Only visible to Project Managers -->
 	{#if isProjectManager}
@@ -198,41 +200,46 @@
 		</div>
 	{/if}
 
-	<div class="bg-white rounded-lg shadow p-6">
-		<h3 class="text-lg font-semibold text-gray-900 mb-4">Assigned Workers</h3>
+	<!-- Assigned Workers - Procurement only -->
+	{#if isProcurement}
+		<div class="bg-white rounded-lg shadow p-6">
+			<h3 class="text-lg font-semibold text-gray-900 mb-4">Assigned Workers</h3>
 
-		{#if data.allWorkers.length === 0}
-			<p class="text-gray-500 text-sm">No workers registered yet. Workers need to register first.</p>
-		{:else}
-			<div class="space-y-2">
-				{#each data.allWorkers as worker (worker.id)}
-					{@const isAssigned = assignedWorkerIds.has(worker.id)}
-					<div class="flex items-center justify-between py-2 px-3 rounded-md {isAssigned ? 'bg-green-50' : 'bg-gray-50'}">
-						<div class="flex items-center gap-3">
-							<span class="w-2 h-2 rounded-full {isAssigned ? 'bg-green-500' : 'bg-gray-300'}"></span>
-							<span class="font-medium text-gray-900">{worker.username}</span>
-							{#if isAssigned}
-								<span class="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded">Assigned</span>
-							{/if}
+			{#if data.allWorkers.length === 0}
+				<p class="text-gray-500 text-sm">No workers registered yet. Workers need to register first.</p>
+			{:else}
+				<div class="space-y-2">
+					{#each data.allWorkers as worker (worker.id)}
+						{@const isAssigned = assignedWorkerIds.has(worker.id)}
+						<div class="flex items-center justify-between py-2 px-3 rounded-md {isAssigned ? 'bg-green-50' : 'bg-gray-50'}">
+							<div class="flex items-center gap-3">
+								<span class="w-2 h-2 rounded-full {isAssigned ? 'bg-green-500' : 'bg-gray-300'}"></span>
+								<span class="font-medium text-gray-900">{worker.username}</span>
+								{#if isAssigned}
+									<span class="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded">Assigned</span>
+								{/if}
+							</div>
+							<form method="post" action={isAssigned ? '?/unassign' : '?/assign'} use:enhance>
+								<input type="hidden" name="workerId" value={worker.id} />
+								<button
+									type="submit"
+									class="text-sm px-3 py-1 rounded {isAssigned
+										? 'bg-red-100 text-red-700 hover:bg-red-200'
+										: 'bg-blue-100 text-blue-700 hover:bg-blue-200'} transition-colors"
+								>
+									{isAssigned ? 'Remove' : 'Assign'}
+								</button>
+							</form>
 						</div>
-						<form method="post" action={isAssigned ? '?/unassign' : '?/assign'} use:enhance>
-							<input type="hidden" name="workerId" value={worker.id} />
-							<button
-								type="submit"
-								class="text-sm px-3 py-1 rounded {isAssigned
-									? 'bg-red-100 text-red-700 hover:bg-red-200'
-									: 'bg-blue-100 text-blue-700 hover:bg-blue-200'} transition-colors"
-							>
-								{isAssigned ? 'Remove' : 'Assign'}
-							</button>
-						</form>
-					</div>
-				{/each}
-			</div>
-		{/if}
-	</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{/if}
 
-	<div class="bg-white rounded-lg shadow p-6">
+	<!-- Assigned Products - Procurement only -->
+	{#if isProcurement}
+		<div class="bg-white rounded-lg shadow p-6">
 		<div class="flex items-center justify-between mb-4">
 			<h3 class="text-lg font-semibold text-gray-900">Assigned Products</h3>
 			<div class="flex items-center gap-4">
@@ -311,4 +318,5 @@
 			</div>
 		{/if}
 	</div>
+	{/if}
 </div>
