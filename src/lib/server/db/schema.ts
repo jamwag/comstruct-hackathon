@@ -1,4 +1,13 @@
-import { pgTable, pgEnum, integer, text, timestamp, primaryKey, boolean } from 'drizzle-orm/pg-core';
+import {
+	pgTable,
+	pgEnum,
+	integer,
+	text,
+	timestamp,
+	primaryKey,
+	boolean,
+	foreignKey
+} from 'drizzle-orm/pg-core';
 
 export const userRoleEnum = pgEnum('user_role', ['worker', 'manager']);
 export const consumableTypeEnum = pgEnum('consumable_type', ['single-use', 'reusable']);
@@ -130,14 +139,22 @@ export type ConstructionType = typeof constructionType.$inferSelect;
 export const productConstructionType = pgTable(
 	'product_construction_type',
 	{
-		productId: text('product_id')
-			.references(() => product.id, { onDelete: 'cascade' })
-			.notNull(),
-		constructionTypeId: text('construction_type_id')
-			.references(() => constructionType.id, { onDelete: 'cascade' })
-			.notNull()
+		productId: text('product_id').notNull(),
+		constructionTypeId: text('construction_type_id').notNull()
 	},
-	(table) => [primaryKey({ columns: [table.productId, table.constructionTypeId] })]
+	(table) => [
+		primaryKey({ columns: [table.productId, table.constructionTypeId] }),
+		foreignKey({
+			columns: [table.productId],
+			foreignColumns: [product.id],
+			name: 'pct_product_fk'
+		}).onDelete('cascade'),
+		foreignKey({
+			columns: [table.constructionTypeId],
+			foreignColumns: [constructionType.id],
+			name: 'pct_construction_type_fk'
+		}).onDelete('cascade')
+	]
 );
 
 // Orders (worker product requests)
