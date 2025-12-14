@@ -103,11 +103,23 @@
 		{/if}
 	</div>
 
-	{#if data.projects.length === 0}
-		<!-- No project assigned -->
+	{#if data.projects.length === 0 || !data.selectedProject}
+		<!-- No project assigned or selected -->
 		<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-			<p class="text-yellow-800 font-medium">You are not assigned to any project.</p>
-			<p class="text-yellow-700 text-sm mt-1">Please contact your manager to be assigned to a project.</p>
+			<p class="text-yellow-800 font-medium">
+				{#if data.projects.length === 0}
+					You are not assigned to any project.
+				{:else}
+					Please select a project to browse products.
+				{/if}
+			</p>
+			<p class="text-yellow-700 text-sm mt-1">
+				{#if data.projects.length === 0}
+					Please contact your manager to be assigned to a project.
+				{:else}
+					Use the project selector at the top to choose a project.
+				{/if}
+			</p>
 		</div>
 	{:else if !data.categoryId}
 		<!-- Contextual hint -->
