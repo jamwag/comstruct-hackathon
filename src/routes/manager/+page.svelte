@@ -4,6 +4,7 @@
 	import { page } from '$app/stores';
 	import type { PageData } from './$types';
 	import { managerSelectedProjectId } from '$lib/stores/managerSelectedProject';
+	import OrdersChart from '$lib/components/OrdersChart.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -61,6 +62,8 @@
 				return 'bg-gray-100 text-gray-800';
 		}
 	}
+
+	const rangeLabels: Record<string, string> = { '7d': '7 days', '30d': '30 days', '6m': '6 months', '1y': '1 year' };
 </script>
 
 <svelte:head>
@@ -179,6 +182,41 @@
 				</div>
 			</div>
 		</a>
+	</div>
+
+	<!-- Order Trends Chart -->
+	<div class="bg-white rounded-lg shadow p-5">
+		<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+			<div>
+				<h3 class="text-lg font-semibold text-gray-900">Order Trends</h3>
+				<p class="text-sm text-gray-500">Last {rangeLabels[data.chartRange] || '30 days'}</p>
+			</div>
+			<div class="flex items-center gap-2">
+				<!-- Timeline selector -->
+				<div class="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+					{#each ['7d', '30d', '6m', '1y'] as range}
+						<a
+							href="?{new URLSearchParams({ ...(data.projectId ? { project: data.projectId } : {}), range }).toString()}"
+							class="px-3 py-1.5 {data.chartRange === range ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'} transition-colors"
+						>
+							{range === '7d' ? '7D' : range === '30d' ? '30D' : range === '6m' ? '6M' : '1Y'}
+						</a>
+					{/each}
+				</div>
+				<!-- Legend -->
+				<div class="hidden sm:flex items-center gap-3 text-xs ml-2">
+					<div class="flex items-center gap-1">
+						<span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+						<span class="text-gray-600">Orders</span>
+					</div>
+					<div class="flex items-center gap-1">
+						<span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+						<span class="text-gray-600">Spend</span>
+					</div>
+				</div>
+			</div>
+		</div>
+		<OrdersChart data={data.dailyOrderData} />
 	</div>
 
 	<!-- Resource Counts -->

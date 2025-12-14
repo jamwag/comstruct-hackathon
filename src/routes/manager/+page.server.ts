@@ -1,6 +1,6 @@
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
-import { count, sum, eq, desc, and, inArray } from 'drizzle-orm';
+import { count, sum, eq, desc, and, inArray, gte, sql } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url, locals }) => {
@@ -94,6 +94,64 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			.limit(10);
 	}
 
+	// Chart data with configurable time range
+	const chartRange = url.searchParams.get('range') || '30d';
+	const startDate = new Date();
+	startDate.setHours(0, 0, 0, 0);
+
+	// Calculate start date based on range
+	switch (chartRange) {
+		case '7d':
+			startDate.setDate(startDate.getDate() - 7);
+			break;
+		case '30d':
+			startDate.setDate(startDate.getDate() - 30);
+			break;
+		case '6m':
+			startDate.setMonth(startDate.getMonth() - 6);
+			break;
+		case '1y':
+			startDate.setFullYear(startDate.getFullYear() - 1);
+			break;
+		default:
+			startDate.setDate(startDate.getDate() - 30);
+	}
+
+	let dailyOrderData: Array<{ date: string; orderCount: number; totalSpend: number }> = [];
+
+	const chartFilter = getProjectFilter();
+	if (chartFilter !== null) {
+		// Build conditions including the date filter
+		const dateCondition = gte(table.order.createdAt, startDate);
+		const fullFilter = chartFilter ? and(chartFilter, dateCondition) : dateCondition;
+
+		const rawDailyData = await db
+			.select({
+				date: sql<string>`DATE(${table.order.createdAt})`.as('date'),
+				orderCount: count(),
+				totalSpend: sum(table.order.totalCents)
+			})
+			.from(table.order)
+			.where(fullFilter)
+			.groupBy(sql`DATE(${table.order.createdAt})`)
+			.orderBy(sql`DATE(${table.order.createdAt})`);
+
+		// Fill in missing days with zeros
+		const dataMap = new Map(rawDailyData.map(d => [d.date, d]));
+		const today = new Date();
+		today.setHours(0, 0, 0, 0);
+
+		for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
+			const dateStr = d.toISOString().split('T')[0];
+			const existing = dataMap.get(dateStr);
+			dailyOrderData.push({
+				date: dateStr,
+				orderCount: existing?.orderCount ?? 0,
+				totalSpend: Number(existing?.totalSpend) || 0
+			});
+		}
+	}
+
 	return {
 		counts: {
 			suppliers: supplierCount.count,
@@ -115,6 +173,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			projectName: r.project.name,
 			workerName: r.worker.username
 		})),
+		dailyOrderData,
+		chartRange,
 		selectedProject,
 		projectId
 	};
