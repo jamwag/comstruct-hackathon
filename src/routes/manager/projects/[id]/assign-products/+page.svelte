@@ -91,8 +91,8 @@
 
 <div class="space-y-6">
 	<div class="mb-6">
-		<a href="/manager/projects/{data.project.id}" class="text-blue-600 hover:underline text-sm">
-			&larr; Back to {data.project.name}
+		<a href="/manager/products?project={data.project.id}" class="text-blue-600 hover:underline text-sm">
+			&larr; Back to Assigned Products
 		</a>
 	</div>
 

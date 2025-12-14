@@ -47,14 +47,17 @@
 				</thead>
 				<tbody class="bg-white divide-y divide-gray-200">
 					{#each data.suppliers as supplier (supplier.id)}
-						<tr class="hover:bg-gray-50">
+						<tr
+							class="hover:bg-gray-50 cursor-pointer"
+							onclick={() => window.location.href = `/manager/suppliers/${supplier.id}`}
+						>
 							<td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
 								{supplier.name}
 							</td>
 							<td class="px-6 py-4 whitespace-nowrap text-gray-500">
 								{supplier.contactEmail || '-'}
 							</td>
-							<td class="px-6 py-4 text-gray-500 max-w-xs">
+							<td class="px-6 py-4 text-gray-500 max-w-xs" onclick={(e) => e.stopPropagation()}>
 								{#if supplier.shopUrl}
 									<a
 										href={supplier.shopUrl}

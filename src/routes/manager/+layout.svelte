@@ -54,30 +54,12 @@
 				Dashboard
 			</a>
 			<a
-				href="/manager/projects"
-				class="block px-3 py-2 rounded-md font-medium {isActive('/manager/projects')
-					? 'bg-blue-50 text-blue-700'
-					: 'text-gray-700 hover:bg-gray-100'}"
-			>
-				Projects
-			</a>
-			{#if isProcurement}
-				<a
-					href="/manager/suppliers"
-					class="block px-3 py-2 rounded-md font-medium {isActive('/manager/suppliers')
-						? 'bg-blue-50 text-blue-700'
-						: 'text-gray-700 hover:bg-gray-100'}"
-				>
-					Suppliers
-				</a>
-			{/if}
-			<a
-				href="/manager/products"
+				href="/manager/products{currentProjectId ? `?project=${currentProjectId}` : ''}"
 				class="block px-3 py-2 rounded-md font-medium {isActive('/manager/products')
 					? 'bg-blue-50 text-blue-700'
 					: 'text-gray-700 hover:bg-gray-100'}"
 			>
-				Products
+				Assigned Products
 			</a>
 			<a
 				href="/manager/orders"
@@ -87,6 +69,18 @@
 			>
 				Orders
 			</a>
+
+			{#if isProcurement}
+				<div class="border-t border-gray-200 my-3"></div>
+				<a
+					href="/manager/suppliers"
+					class="block px-3 py-2 rounded-md font-medium {isActive('/manager/suppliers')
+						? 'bg-blue-50 text-blue-700'
+						: 'text-gray-700 hover:bg-gray-100'}"
+				>
+					Suppliers
+				</a>
+			{/if}
 		</nav>
 		<div class="border-t pt-4">
 			<div class="flex items-center gap-3 px-2 py-2">

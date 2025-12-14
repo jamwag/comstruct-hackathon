@@ -7,55 +7,11 @@
 	let thresholdValue = $state((data.project.autoApprovalThreshold ?? 20000) / 100);
 
 	const assignedWorkerIds = $derived(new Set(data.assignedWorkerIds));
-	const assignedProductIds = $derived(new Set(data.assignedProductIds));
 	const assignedPMIds = $derived(new Set(data.assignedPMIds));
 
 	// Role-based visibility
 	const isProjectManager = data.userRole === 'project_manager';
 	const isProcurement = data.userRole === 'manager';
-
-	let productSearch = $state('');
-
-	// Filter products by search
-	const filteredProducts = $derived.by(() => {
-		const searchLower = productSearch.toLowerCase();
-		return data.allProducts.filter(
-			({ product }) =>
-				product.name.toLowerCase().includes(searchLower) ||
-				product.sku.toLowerCase().includes(searchLower)
-		);
-	});
-
-	// Group filtered products by category
-	const productsByCategory = $derived.by(() => {
-		const groups: Record<string, typeof data.allProducts> = {};
-
-		for (const item of filteredProducts) {
-			const categoryId = item.category?.id ?? '_uncategorized';
-			if (!groups[categoryId]) {
-				groups[categoryId] = [];
-			}
-			groups[categoryId].push(item);
-		}
-
-		// Sort by category order
-		return data.categories
-			.map((cat) => ({
-				category: cat,
-				products: groups[cat.id] ?? []
-			}))
-			.filter((g) => g.products.length > 0)
-			.concat(
-				groups['_uncategorized']?.length > 0
-					? [{ category: null, products: groups['_uncategorized'] }]
-					: []
-			);
-	});
-
-	// Count assigned products per category
-	function countAssignedInCategory(products: typeof data.allProducts): number {
-		return products.filter(({ product }) => assignedProductIds.has(product.id)).length;
-	}
 </script>
 
 <svelte:head>
@@ -64,7 +20,7 @@
 
 <div class="space-y-6">
 	<div class="mb-6">
-		<a href="/manager/projects" class="text-blue-600 hover:underline text-sm">&larr; Back to Projects</a>
+		<a href="/manager" class="text-blue-600 hover:underline text-sm">&larr; Back to Dashboard</a>
 	</div>
 
 	<div class="bg-white rounded-lg shadow p-6">
@@ -292,83 +248,20 @@
 	<!-- Assigned Products - Procurement only -->
 	{#if isProcurement}
 		<div class="bg-white rounded-lg shadow p-6">
-		<div class="flex items-center justify-between mb-4">
-			<h3 class="text-lg font-semibold text-gray-900">Assigned Products</h3>
-			<div class="flex items-center gap-4">
-				<span class="text-sm text-gray-500">
-					{data.assignedProductIds.length} of {data.allProducts.length} products assigned
-				</span>
+			<div class="flex items-center justify-between">
+				<div>
+					<h3 class="text-lg font-semibold text-gray-900">Assigned Products</h3>
+					<p class="text-sm text-gray-500 mt-1">
+						{data.assignedProductIds.length} of {data.allProducts.length} products assigned to this project
+					</p>
+				</div>
 				<a
-					href="/manager/projects/{data.project.id}/assign-products"
-					class="text-sm px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+					href="/manager/products?project={data.project.id}"
+					class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
 				>
-					Extended View
+					Manage Products
 				</a>
 			</div>
 		</div>
-
-		{#if data.allProducts.length === 0}
-			<p class="text-gray-500 text-sm">No products available. <a href="/manager/products/upload" class="text-blue-600 hover:underline">Upload products</a> first.</p>
-		{:else}
-			<div class="mb-4">
-				<input
-					type="text"
-					bind:value={productSearch}
-					placeholder="Search products by name or SKU..."
-					class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-				/>
-			</div>
-
-			<div class="space-y-4 max-h-96 overflow-y-auto">
-				{#each productsByCategory as group (group.category?.id ?? 'uncategorized')}
-					<div class="border border-gray-200 rounded-lg">
-						<div class="bg-gray-50 px-4 py-2 border-b border-gray-200">
-							<div class="flex items-center justify-between">
-								<span class="font-medium text-gray-700">
-									{group.category?.name ?? 'Uncategorized'}
-								</span>
-								<span class="text-xs text-gray-500">
-									{countAssignedInCategory(group.products)} / {group.products.length} assigned
-								</span>
-							</div>
-						</div>
-						<div class="divide-y divide-gray-100">
-							{#each group.products as { product, category } (product.id)}
-								{@const isAssigned = assignedProductIds.has(product.id)}
-								<div class="flex items-center justify-between px-4 py-2 hover:bg-gray-50">
-									<div class="flex-1 min-w-0">
-										<div class="flex items-center gap-2">
-											<span class="font-medium text-gray-900 truncate">{product.name}</span>
-											{#if isAssigned}
-												<span class="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded shrink-0">Assigned</span>
-											{/if}
-										</div>
-										<div class="text-sm text-gray-500">
-											{product.sku} &bull; CHF {(product.pricePerUnit / 100).toFixed(2)} / {product.unit}
-										</div>
-									</div>
-									<form method="post" action={isAssigned ? '?/unassignProduct' : '?/assignProduct'} use:enhance class="shrink-0 ml-4">
-										<input type="hidden" name="productId" value={product.id} />
-										<button
-											type="submit"
-											class="text-sm px-3 py-1 rounded {isAssigned
-												? 'bg-red-100 text-red-700 hover:bg-red-200'
-												: 'bg-blue-100 text-blue-700 hover:bg-blue-200'} transition-colors"
-										>
-											{isAssigned ? 'Remove' : 'Assign'}
-										</button>
-									</form>
-								</div>
-							{/each}
-						</div>
-					</div>
-				{/each}
-
-				{#if productsByCategory.length === 0 && productSearch}
-					<p class="text-gray-500 text-sm text-center py-4">No products match your search.</p>
-				{/if}
-			</div>
-		{/if}
-	</div>
 	{/if}
 </div>
