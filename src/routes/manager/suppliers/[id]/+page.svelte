@@ -9,6 +9,18 @@
 	function formatPrice(cents: number): string {
 		return (cents / 100).toFixed(2);
 	}
+
+	function confirmDeleteSupplier(event: Event) {
+		if (!confirm(`Are you sure you want to delete "${data.supplier.name}" and all ${data.productCount} products from this supplier? This cannot be undone.`)) {
+			event.preventDefault();
+		}
+	}
+
+	function confirmDeleteProduct(event: Event, productName: string) {
+		if (!confirm(`Are you sure you want to delete "${productName}"? This cannot be undone.`)) {
+			event.preventDefault();
+		}
+	}
 </script>
 
 <svelte:head>
@@ -28,13 +40,23 @@
 				<p class="text-sm text-gray-500">Supplier</p>
 			</div>
 		</div>
-		<button
-			type="button"
-			class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-			onclick={() => (isEditing = !isEditing)}
-		>
-			{isEditing ? 'Cancel' : 'Edit Supplier'}
-		</button>
+		<div class="flex items-center gap-2">
+			<button
+				type="button"
+				class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+				onclick={() => (isEditing = !isEditing)}
+			>
+				{isEditing ? 'Cancel' : 'Edit Supplier'}
+			</button>
+			<form method="post" action="?/deleteSupplier" use:enhance onsubmit={confirmDeleteSupplier}>
+				<button
+					type="submit"
+					class="px-4 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50"
+				>
+					Delete Supplier
+				</button>
+			</form>
+		</div>
 	</div>
 
 	<!-- Supplier Info / Edit Form -->
@@ -180,6 +202,7 @@
 							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
 							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit</th>
 							<th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+							<th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
 						</tr>
 					</thead>
 					<tbody class="bg-white divide-y divide-gray-200">
@@ -190,6 +213,17 @@
 								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{product.categoryName || '-'}</td>
 								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{product.unit}</td>
 								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">CHF {formatPrice(product.pricePerUnit)}</td>
+								<td class="px-6 py-4 whitespace-nowrap text-center">
+									<form method="post" action="?/deleteProduct" use:enhance onsubmit={(e) => confirmDeleteProduct(e, product.name)}>
+										<input type="hidden" name="productId" value={product.id} />
+										<button
+											type="submit"
+											class="text-red-600 hover:text-red-800 text-sm"
+										>
+											Delete
+										</button>
+									</form>
+								</td>
 							</tr>
 						{/each}
 					</tbody>

@@ -1,5 +1,5 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import { eq, desc, count } from 'drizzle-orm';
+import { eq, desc, count, inArray } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import type { Actions, PageServerLoad } from './$types';
@@ -72,5 +72,72 @@ export const actions: Actions = {
 			.where(eq(table.supplier.id, params.id));
 
 		throw redirect(302, '/manager/suppliers');
+	},
+
+	deleteSupplier: async ({ params }) => {
+		// First, delete all related data for products from this supplier
+		const supplierProducts = await db
+			.select({ id: table.product.id })
+			.from(table.product)
+			.where(eq(table.product.supplierId, params.id));
+
+		const productIds = supplierProducts.map((p) => p.id);
+
+		if (productIds.length > 0) {
+			// Delete product-related records
+			await db.delete(table.productConstructionType).where(
+				inArray(table.productConstructionType.productId, productIds)
+			);
+			await db.delete(table.projectProduct).where(
+				inArray(table.projectProduct.productId, productIds)
+			);
+			await db.delete(table.productKitItem).where(
+				inArray(table.productKitItem.productId, productIds)
+			);
+			// Set orderItem productId to null for these products
+			await db
+				.update(table.orderItem)
+				.set({ productId: null })
+				.where(inArray(table.orderItem.productId, productIds));
+			// Delete products
+			await db.delete(table.product).where(eq(table.product.supplierId, params.id));
+		}
+
+		// Delete project supplier preferences
+		await db.delete(table.projectSupplier).where(eq(table.projectSupplier.supplierId, params.id));
+
+		// Delete the supplier
+		await db.delete(table.supplier).where(eq(table.supplier.id, params.id));
+
+		throw redirect(302, '/manager/suppliers');
+	},
+
+	deleteProduct: async ({ request }) => {
+		const formData = await request.formData();
+		const productId = formData.get('productId');
+
+		if (typeof productId !== 'string') {
+			return fail(400, { message: 'Product ID is required' });
+		}
+
+		// Delete product-related records
+		await db.delete(table.productConstructionType).where(
+			eq(table.productConstructionType.productId, productId)
+		);
+		await db.delete(table.projectProduct).where(
+			eq(table.projectProduct.productId, productId)
+		);
+		await db.delete(table.productKitItem).where(
+			eq(table.productKitItem.productId, productId)
+		);
+		// Set orderItem productId to null
+		await db
+			.update(table.orderItem)
+			.set({ productId: null })
+			.where(eq(table.orderItem.productId, productId));
+		// Delete the product
+		await db.delete(table.product).where(eq(table.product.id, productId));
+
+		return { success: true };
 	}
 };
