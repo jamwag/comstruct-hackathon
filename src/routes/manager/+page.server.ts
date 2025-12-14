@@ -1,7 +1,8 @@
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
-import { count, sum, eq, desc, and, inArray, gte, sql } from 'drizzle-orm';
+import { count, sum, eq, desc, and, inArray, gte, sql, isNull } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
+import { deriveShippingStatus } from '$lib/utils/shipping';
 
 export const load: PageServerLoad = async ({ url, locals }) => {
 	const user = locals.user!;
@@ -152,6 +153,147 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		}
 	}
 
+	// Shipping stats - count approved orders by supplier response status
+	let shippingStats = {
+		awaitingResponse: 0,
+		confirmed: 0,
+		partial: 0,
+		rejected: 0
+	};
+
+	if (approvedFilter !== null) {
+		// Get all approved orders
+		const approvedOrders = await db
+			.select({ id: table.order.id })
+			.from(table.order)
+			.where(approvedFilter);
+
+		if (approvedOrders.length > 0) {
+			const approvedOrderIds = approvedOrders.map((o) => o.id);
+
+			// Get supplier responses for approved orders
+			const responses = await db
+				.select({
+					orderId: table.orderSupplierResponse.orderId,
+					status: table.orderSupplierResponse.status
+				})
+				.from(table.orderSupplierResponse)
+				.where(inArray(table.orderSupplierResponse.orderId, approvedOrderIds));
+
+			// Group responses by order
+			const responsesByOrder = new Map<string, Array<{ status: string }>>();
+			for (const r of responses) {
+				if (!responsesByOrder.has(r.orderId)) {
+					responsesByOrder.set(r.orderId, []);
+				}
+				responsesByOrder.get(r.orderId)!.push({ status: r.status });
+			}
+
+			// Count by shipping status
+			for (const orderId of approvedOrderIds) {
+				const orderResponses = responsesByOrder.get(orderId) || [];
+				const status = deriveShippingStatus('approved', orderResponses);
+
+				switch (status) {
+					case 'awaiting':
+						shippingStats.awaitingResponse++;
+						break;
+					case 'confirmed':
+						shippingStats.confirmed++;
+						break;
+					case 'partial':
+						shippingStats.partial++;
+						break;
+					case 'rejected':
+						shippingStats.rejected++;
+						break;
+				}
+			}
+		}
+	}
+
+	// Upcoming deliveries (next 5 confirmed deliveries)
+	const today = new Date();
+	today.setHours(0, 0, 0, 0);
+
+	let upcomingDeliveries: Array<{
+		orderNumber: string;
+		projectName: string;
+		deliveryDate: Date;
+		supplierName: string;
+	}> = [];
+
+	const upcomingQuery = await db
+		.select({
+			orderNumber: table.order.orderNumber,
+			projectName: table.project.name,
+			deliveryDate: table.orderSupplierResponse.deliveryDate,
+			supplierName: table.supplier.name,
+			projectId: table.order.projectId
+		})
+		.from(table.orderSupplierResponse)
+		.innerJoin(table.order, eq(table.orderSupplierResponse.orderId, table.order.id))
+		.innerJoin(table.project, eq(table.order.projectId, table.project.id))
+		.innerJoin(table.supplier, eq(table.orderSupplierResponse.supplierId, table.supplier.id))
+		.where(
+			and(
+				eq(table.orderSupplierResponse.status, 'confirmed'),
+				gte(table.orderSupplierResponse.deliveryDate, today)
+			)
+		)
+		.orderBy(table.orderSupplierResponse.deliveryDate)
+		.limit(10);
+
+	// Filter by project access
+	upcomingDeliveries = upcomingQuery
+		.filter((d) => {
+			if (projectId) return d.projectId === projectId;
+			if (allowedProjectIds) return allowedProjectIds.includes(d.projectId);
+			return true;
+		})
+		.slice(0, 5)
+		.filter((d) => d.deliveryDate !== null)
+		.map((d) => ({
+			orderNumber: d.orderNumber,
+			projectName: d.projectName,
+			deliveryDate: d.deliveryDate!,
+			supplierName: d.supplierName
+		}));
+
+	// Get supplier responses for recent orders to add shipping status
+	const recentOrderIds = recentOrders.map((r) => r.order.id);
+	let recentOrderResponses: Array<{
+		orderId: string;
+		status: string;
+		deliveryDate: Date | null;
+	}> = [];
+
+	if (recentOrderIds.length > 0) {
+		recentOrderResponses = await db
+			.select({
+				orderId: table.orderSupplierResponse.orderId,
+				status: table.orderSupplierResponse.status,
+				deliveryDate: table.orderSupplierResponse.deliveryDate
+			})
+			.from(table.orderSupplierResponse)
+			.where(inArray(table.orderSupplierResponse.orderId, recentOrderIds));
+	}
+
+	// Group responses by order for recent orders
+	const recentResponsesByOrder = new Map<
+		string,
+		Array<{ status: string; deliveryDate: Date | null }>
+	>();
+	for (const r of recentOrderResponses) {
+		if (!recentResponsesByOrder.has(r.orderId)) {
+			recentResponsesByOrder.set(r.orderId, []);
+		}
+		recentResponsesByOrder.get(r.orderId)!.push({
+			status: r.status,
+			deliveryDate: r.deliveryDate
+		});
+	}
+
 	return {
 		counts: {
 			suppliers: supplierCount.count,
@@ -163,16 +305,34 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			pendingOrdersValue: Number(pendingOrders.total) || 0,
 			totalOrdersCount: totalOrders.count
 		},
-		recentOrders: recentOrders.map((r) => ({
-			id: r.order.id,
-			orderNumber: r.order.orderNumber,
-			status: r.order.status,
-			totalCents: r.order.totalCents,
-			createdAt: r.order.createdAt,
-			priority: r.order.priority,
-			projectName: r.project.name,
-			workerName: r.worker.username
-		})),
+		shippingStats,
+		upcomingDeliveries,
+		recentOrders: recentOrders.map((r) => {
+			const responses = recentResponsesByOrder.get(r.order.id) || [];
+			const shippingStatus = deriveShippingStatus(r.order.status, responses);
+
+			// Get earliest delivery date
+			const deliveryDates = responses
+				.filter((resp) => resp.deliveryDate)
+				.map((resp) => new Date(resp.deliveryDate!));
+			const earliestDeliveryDate =
+				deliveryDates.length > 0
+					? new Date(Math.min(...deliveryDates.map((d) => d.getTime())))
+					: null;
+
+			return {
+				id: r.order.id,
+				orderNumber: r.order.orderNumber,
+				status: r.order.status,
+				totalCents: r.order.totalCents,
+				createdAt: r.order.createdAt,
+				priority: r.order.priority,
+				projectName: r.project.name,
+				workerName: r.worker.username,
+				shippingStatus,
+				deliveryDate: earliestDeliveryDate
+			};
+		}),
 		dailyOrderData,
 		chartRange,
 		selectedProject,

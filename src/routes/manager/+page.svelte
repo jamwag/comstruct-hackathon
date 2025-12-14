@@ -5,6 +5,7 @@
 	import type { PageData } from './$types';
 	import { managerSelectedProjectId } from '$lib/stores/managerSelectedProject';
 	import OrdersChart from '$lib/components/OrdersChart.svelte';
+	import ShippingStatusBadge from '$lib/components/ShippingStatusBadge.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -61,6 +62,14 @@
 			default:
 				return 'bg-gray-100 text-gray-800';
 		}
+	}
+
+	function formatDeliveryDate(date: Date | string): string {
+		return new Date(date).toLocaleDateString('de-CH', {
+			day: '2-digit',
+			month: '2-digit',
+			year: 'numeric'
+		});
 	}
 
 	const rangeLabels: Record<string, string> = { '7d': '7 days', '30d': '30 days', '6m': '6 months', '1y': '1 year' };
@@ -184,6 +193,84 @@
 		</a>
 	</div>
 
+	<!-- Shipping Status Overview -->
+	<div class="bg-white rounded-lg shadow p-5">
+		<h3 class="text-lg font-semibold text-gray-900 mb-4">Shipping Status</h3>
+		<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+			<a href="/manager/orders?status=approved{data.projectId ? `&project=${data.projectId}` : ''}" class="p-4 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors">
+				<div class="flex items-center gap-2">
+					<div class="p-1.5 bg-orange-100 rounded">
+						<svg class="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+					</div>
+					<span class="text-sm font-medium text-orange-800">Awaiting</span>
+				</div>
+				<div class="mt-2 text-2xl font-bold text-orange-900">{data.shippingStats.awaitingResponse}</div>
+			</a>
+
+			<a href="/manager/orders?status=approved{data.projectId ? `&project=${data.projectId}` : ''}" class="p-4 bg-green-50 rounded-lg hover:bg-green-100 transition-colors">
+				<div class="flex items-center gap-2">
+					<div class="p-1.5 bg-green-100 rounded">
+						<svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+						</svg>
+					</div>
+					<span class="text-sm font-medium text-green-800">Confirmed</span>
+				</div>
+				<div class="mt-2 text-2xl font-bold text-green-900">{data.shippingStats.confirmed}</div>
+			</a>
+
+			<a href="/manager/orders?status=approved{data.projectId ? `&project=${data.projectId}` : ''}" class="p-4 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors">
+				<div class="flex items-center gap-2">
+					<div class="p-1.5 bg-yellow-100 rounded">
+						<svg class="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+						</svg>
+					</div>
+					<span class="text-sm font-medium text-yellow-800">Partial</span>
+				</div>
+				<div class="mt-2 text-2xl font-bold text-yellow-900">{data.shippingStats.partial}</div>
+			</a>
+
+			<a href="/manager/orders?status=approved{data.projectId ? `&project=${data.projectId}` : ''}" class="p-4 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
+				<div class="flex items-center gap-2">
+					<div class="p-1.5 bg-red-100 rounded">
+						<svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</div>
+					<span class="text-sm font-medium text-red-800">Rejected</span>
+				</div>
+				<div class="mt-2 text-2xl font-bold text-red-900">{data.shippingStats.rejected}</div>
+			</a>
+		</div>
+	</div>
+
+	<!-- Upcoming Deliveries -->
+	{#if data.upcomingDeliveries.length > 0}
+		<div class="bg-white rounded-lg shadow p-5">
+			<div class="flex justify-between items-center mb-4">
+				<h3 class="text-lg font-semibold text-gray-900">Upcoming Deliveries</h3>
+				<span class="text-sm text-gray-500">{data.upcomingDeliveries.length} scheduled</span>
+			</div>
+			<div class="space-y-3">
+				{#each data.upcomingDeliveries as delivery}
+					<div class="flex items-center justify-between py-2 border-b last:border-0">
+						<div>
+							<span class="font-medium text-gray-900">{delivery.orderNumber}</span>
+							<span class="text-gray-500 text-sm ml-2">{delivery.projectName}</span>
+						</div>
+						<div class="text-right">
+							<div class="text-sm font-medium text-gray-900">{formatDeliveryDate(delivery.deliveryDate)}</div>
+							<div class="text-xs text-gray-500">{delivery.supplierName}</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
+
 	<!-- Order Trends Chart -->
 	<div class="bg-white rounded-lg shadow p-5">
 		<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
@@ -250,6 +337,7 @@
 							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Project</th>
 							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Worker</th>
 							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shipping</th>
 							<th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
 							<th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
 						</tr>
@@ -271,6 +359,13 @@
 									<span class="px-2 py-1 text-xs font-medium rounded-full {getStatusColor(order.status)}">
 										{order.status}
 									</span>
+								</td>
+								<td class="px-6 py-4 whitespace-nowrap">
+									{#if order.status === 'approved' && order.shippingStatus}
+										<ShippingStatusBadge status={order.shippingStatus} deliveryDate={order.deliveryDate} compact />
+									{:else}
+										<span class="text-gray-400 text-sm">-</span>
+									{/if}
 								</td>
 								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
 									CHF {formatPrice(order.totalCents)}

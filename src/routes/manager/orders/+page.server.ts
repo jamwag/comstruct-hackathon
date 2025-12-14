@@ -3,6 +3,7 @@ import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import { eq, desc, and, inArray } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
+import { deriveShippingStatus } from '$lib/utils/shipping';
 
 export const load: PageServerLoad = async ({ url, locals }) => {
 	const user = locals.user!;
@@ -86,13 +87,26 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 				.innerJoin(table.supplier, eq(table.orderSupplierResponse.supplierId, table.supplier.id))
 				.where(eq(table.orderSupplierResponse.orderId, row.order.id));
 
+			// Compute supplier response summary
+			const deliveryDates = supplierResponses
+				.filter((r) => r.deliveryDate)
+				.map((r) => new Date(r.deliveryDate!));
+			const earliestDeliveryDate = deliveryDates.length > 0
+				? new Date(Math.min(...deliveryDates.map((d) => d.getTime())))
+				: null;
+
 			return {
 				...row,
 				items: items.map((i) => ({
 					...i.orderItem,
 					product: i.product
 				})),
-				supplierResponses
+				supplierResponses,
+				supplierResponseSummary: {
+					status: deriveShippingStatus(row.order.status, supplierResponses),
+					earliestDeliveryDate,
+					responseCount: supplierResponses.length
+				}
 			};
 		})
 	);

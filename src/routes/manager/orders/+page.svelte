@@ -5,6 +5,7 @@
 	import { goto } from '$app/navigation';
 	import type { ActionData, PageData } from './$types';
 	import { managerSelectedProjectId } from '$lib/stores/managerSelectedProject';
+	import ShippingStatusBadge from '$lib/components/ShippingStatusBadge.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
@@ -143,7 +144,7 @@
 	{:else}
 		<div class="space-y-4">
 			{#each data.orders as order (order.order.id)}
-				<div class="bg-white rounded-lg shadow overflow-hidden">
+				<div class="bg-white rounded-lg shadow overflow-hidden {order.supplierResponseSummary?.status === 'awaiting' ? 'border-l-4 border-orange-400' : ''}">
 					<!-- Order Header -->
 					<div
 						class="p-4 cursor-pointer hover:bg-gray-50"
@@ -159,7 +160,16 @@
 								</span>
 								<div>
 									<p class="font-medium text-gray-900">{order.project.name}</p>
-									<p class="text-sm text-gray-500">by {order.worker.username}</p>
+									<div class="flex items-center gap-2">
+										<p class="text-sm text-gray-500">by {order.worker.username}</p>
+										{#if order.order.status === 'approved' && order.supplierResponseSummary}
+											<ShippingStatusBadge
+												status={order.supplierResponseSummary.status}
+												deliveryDate={order.supplierResponseSummary.earliestDeliveryDate}
+												compact
+											/>
+										{/if}
+									</div>
 								</div>
 							</div>
 							<div class="text-right">
