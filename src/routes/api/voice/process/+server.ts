@@ -6,7 +6,7 @@ import {
 	type ConversationContext,
 	type CartContext
 } from '$lib/server/ai/extract-voice-intent';
-import { searchProjectProducts, type ProductMatch } from '$lib/server/voice/product-search';
+import { searchProjectProducts, type ProductMatch, type SupplierSuggestion } from '$lib/server/voice/product-search';
 import { speechToText } from '$lib/server/elevenlabs';
 
 // Context product for client-side tracking
@@ -36,6 +36,7 @@ export interface NewSearchResult {
 		products: ProductMatch[];
 	}>;
 	noMatchMessage: string | null;
+	supplierSuggestions?: SupplierSuggestion[];
 }
 
 // Response for select_product intent
@@ -498,6 +499,7 @@ async function handleNewSearch(
 
 	const recommendations: NewSearchResult['recommendations'] = [];
 	let totalProductsFound = 0;
+	const allSupplierSuggestions: SupplierSuggestion[] = [];
 
 	for (const item of searchItems) {
 		const searchResult = await searchProjectProducts(
@@ -505,10 +507,16 @@ async function handleNewSearch(
 			item.searchTerms,
 			item.description,
 			8, // Show up to 8 products per item for better selection
-			userId // Pass userId for smart quantity suggestions
+			userId, // Pass userId for smart quantity suggestions
+			true // Include supplier suggestions
 		);
 
 		totalProductsFound += searchResult.products.length;
+
+		// Collect supplier suggestions from each search
+		if (searchResult.supplierSuggestions) {
+			allSupplierSuggestions.push(...searchResult.supplierSuggestions);
+		}
 
 		recommendations.push({
 			forItem: item.description,
@@ -517,11 +525,20 @@ async function handleNewSearch(
 		});
 	}
 
+	// Deduplicate supplier suggestions by ID and keep top 3
+	const uniqueSupplierSuggestions = Array.from(
+		new Map(allSupplierSuggestions.map(s => [s.id, s])).values()
+	).slice(0, 3);
+
 	// Determine if we need to show a "no match" message
 	let noMatchMessage: string | null = null;
 	if (searchItems.length > 0 && totalProductsFound === 0) {
 		const itemNames = searchItems.map((i) => i.description).join(', ');
-		noMatchMessage = `I couldn't find "${itemNames}" in your project catalogue. Try using different words, or browse the main catalogue to find what you need.`;
+		if (uniqueSupplierSuggestions.length > 0) {
+			noMatchMessage = `No matching products in your project catalogue. Try browsing an external supplier catalog below.`;
+		} else {
+			noMatchMessage = `I couldn't find "${itemNames}" in your project catalogue. Try using different words, or browse the main catalogue to find what you need.`;
+		}
 	} else if (recommendations.some((r) => r.products.length === 0)) {
 		const noMatchItems = recommendations
 			.filter((r) => r.products.length === 0)
@@ -540,6 +557,7 @@ async function handleNewSearch(
 			}))
 		},
 		recommendations,
-		noMatchMessage
+		noMatchMessage,
+		supplierSuggestions: uniqueSupplierSuggestions.length > 0 ? uniqueSupplierSuggestions : undefined
 	} satisfies NewSearchResult);
 }

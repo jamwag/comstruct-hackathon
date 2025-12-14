@@ -1,6 +1,6 @@
 import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNotNull, asc } from 'drizzle-orm';
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '$env/dynamic/private';
 
@@ -20,10 +20,20 @@ export interface ProductMatch {
 	orderCount?: number;
 }
 
+export interface SupplierSuggestion {
+	id: string;
+	name: string;
+	shopUrl: string;
+	description: string;
+	matchScore: number;
+	matchReason: string;
+}
+
 export interface SearchResult {
 	query: string;
 	products: ProductMatch[];
 	totalFound: number;
+	supplierSuggestions?: SupplierSuggestion[];
 }
 
 /**
@@ -137,16 +147,177 @@ function simpleMatch(
 }
 
 /**
+ * Get supplier preference ranks for a project.
+ * Returns a Map of supplierId -> preferenceRank (lower = higher priority).
+ */
+async function getSupplierPriorities(projectId: string): Promise<Map<string, number>> {
+	const priorities = await db
+		.select({
+			supplierId: table.projectSupplier.supplierId,
+			preferenceRank: table.projectSupplier.preferenceRank
+		})
+		.from(table.projectSupplier)
+		.where(eq(table.projectSupplier.projectId, projectId));
+
+	return new Map(priorities.map(p => [p.supplierId, p.preferenceRank]));
+}
+
+/**
+ * Use AI to match supplier descriptions against user search query.
+ * Returns suppliers with external shop URLs that are relevant to the query.
+ */
+async function getExternalShopSuggestions(
+	projectId: string,
+	searchQuery: string
+): Promise<SupplierSuggestion[]> {
+	// Get project suppliers with shop URLs and descriptions
+	const projectSuppliersWithShops = await db
+		.select({
+			id: table.supplier.id,
+			name: table.supplier.name,
+			shopUrl: table.supplier.shopUrl,
+			description: table.supplier.description,
+			preferenceRank: table.projectSupplier.preferenceRank
+		})
+		.from(table.projectSupplier)
+		.innerJoin(table.supplier, eq(table.projectSupplier.supplierId, table.supplier.id))
+		.where(
+			and(
+				eq(table.projectSupplier.projectId, projectId),
+				isNotNull(table.supplier.shopUrl),
+				isNotNull(table.supplier.description)
+			)
+		)
+		.orderBy(asc(table.projectSupplier.preferenceRank));
+
+	console.log('[getExternalShopSuggestions] projectId:', projectId);
+	console.log('[getExternalShopSuggestions] searchQuery:', searchQuery);
+	console.log('[getExternalShopSuggestions] found suppliers:', projectSuppliersWithShops.length, projectSuppliersWithShops);
+
+	if (projectSuppliersWithShops.length === 0) {
+		return [];
+	}
+
+	// Use AI to match suppliers to search query
+	const apiKey = env.ANTHROPIC_API_KEY;
+	if (!apiKey) {
+		return simpleSupplierMatch(projectSuppliersWithShops, searchQuery);
+	}
+
+	const supplierList = projectSuppliersWithShops
+		.map((s, i) => `${i + 1}. "${s.name}" - ${s.description}`)
+		.join('\n');
+
+	const prompt = `A worker is searching for: "${searchQuery}"
+
+Available supplier catalogs:
+${supplierList}
+
+Which suppliers are RELEVANT for this search? Only include suppliers whose description suggests they sell related products.
+
+Return JSON array of matches:
+[{"index": 1, "score": 0.8, "reason": "2-3 word reason"}]
+
+Rules:
+- score: 0.8+ = highly relevant, 0.5-0.8 = somewhat relevant
+- Only include suppliers with score >= 0.5
+- If NO supplier is relevant, return empty array []
+- Maximum 3 suppliers
+
+Return ONLY valid JSON array.`;
+
+	try {
+		const anthropic = new Anthropic({ apiKey });
+		const response = await anthropic.messages.create({
+			model: 'claude-haiku-4-5-20251001',
+			max_tokens: 300,
+			messages: [{ role: 'user', content: prompt }]
+		});
+
+		const content = response.content[0];
+		if (content.type !== 'text') {
+			console.log('[getExternalShopSuggestions] AI response not text, falling back');
+			return simpleSupplierMatch(projectSuppliersWithShops, searchQuery);
+		}
+
+		let jsonText = content.text.trim();
+		console.log('[getExternalShopSuggestions] AI raw response:', jsonText);
+
+		if (jsonText.startsWith('```')) {
+			jsonText = jsonText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+		}
+
+		const matches: Array<{ index: number; score: number; reason: string }> = JSON.parse(jsonText);
+		console.log('[getExternalShopSuggestions] parsed matches:', matches);
+
+		const result = matches
+			.filter(m => m.score >= 0.5)
+			.map(m => {
+				const supplier = projectSuppliersWithShops[m.index - 1];
+				if (!supplier) return null;
+				return {
+					id: supplier.id,
+					name: supplier.name,
+					shopUrl: supplier.shopUrl!,
+					description: supplier.description!,
+					matchScore: m.score,
+					matchReason: m.reason
+				};
+			})
+			.filter((s): s is SupplierSuggestion => s !== null)
+			.slice(0, 3);
+
+		console.log('[getExternalShopSuggestions] final result:', result);
+		return result;
+	} catch (error) {
+		console.error('AI supplier matching failed:', error);
+		return simpleSupplierMatch(projectSuppliersWithShops, searchQuery);
+	}
+}
+
+/**
+ * Simple fallback matching for suppliers when AI is unavailable.
+ */
+function simpleSupplierMatch(
+	suppliers: Array<{ id: string; name: string; shopUrl: string | null; description: string | null }>,
+	searchQuery: string
+): SupplierSuggestion[] {
+	const queryWords = searchQuery.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+
+	return suppliers
+		.filter(s => s.shopUrl && s.description)
+		.map(s => {
+			const descLower = s.description!.toLowerCase();
+			let matchCount = 0;
+			for (const word of queryWords) {
+				if (descLower.includes(word)) matchCount++;
+			}
+			return {
+				id: s.id,
+				name: s.name,
+				shopUrl: s.shopUrl!,
+				description: s.description!,
+				matchScore: matchCount > 0 ? Math.min(0.5 + matchCount * 0.2, 1) : 0,
+				matchReason: matchCount > 0 ? 'Contains search terms' : ''
+			};
+		})
+		.filter(s => s.matchScore > 0)
+		.slice(0, 3);
+}
+
+/**
  * Search for products assigned to a specific project using AI-powered semantic matching.
  * The AI looks at ALL products and picks the most relevant ones for the user's request.
  * If userId is provided, includes smart quantity suggestions based on order history.
+ * If includeSupplierSuggestions is true, also returns relevant external supplier catalogs.
  */
 export async function searchProjectProducts(
 	projectId: string,
 	searchTerms: string[],
 	itemDescription: string,
 	maxResults: number = 5,
-	userId?: string
+	userId?: string,
+	includeSupplierSuggestions: boolean = false
 ): Promise<SearchResult> {
 	// Get all C-material products assigned to this project (filter out A-materials)
 	const projectProducts = await db
@@ -164,14 +335,24 @@ export async function searchProjectProducts(
 			)
 		);
 
-	// If no products assigned to project, return empty
+	// Get supplier suggestions if requested (run in parallel with product search)
+	const supplierSuggestionsPromise = includeSupplierSuggestions
+		? getExternalShopSuggestions(projectId, itemDescription)
+		: Promise.resolve([]);
+
+	// If no products assigned to project, return empty (but still include supplier suggestions)
 	if (projectProducts.length === 0) {
+		const supplierSuggestions = await supplierSuggestionsPromise;
 		return {
 			query: itemDescription,
 			products: [],
-			totalFound: 0
+			totalFound: 0,
+			supplierSuggestions: supplierSuggestions.length > 0 ? supplierSuggestions : undefined
 		};
 	}
+
+	// Get supplier priorities for tie-breaking
+	const supplierPriorities = await getSupplierPriorities(projectId);
 
 	// Prepare products for AI matching
 	const productsForAI = projectProducts.map(({ product, category }) => ({
@@ -212,16 +393,20 @@ export async function searchProjectProducts(
 		}
 	}
 
-	// Build the final product list with match info
-	const matchedProducts: ProductMatch[] = [];
+	// Build the product list with match info and supplier priority
+	interface ProductWithPriority extends ProductMatch {
+		_supplierRank: number;
+	}
+	const matchedProductsWithPriority: ProductWithPriority[] = [];
 
 	for (const match of aiMatches) {
 		const productData = projectProducts.find(p => p.product.id === match.id);
 		if (productData) {
 			const { product, category } = productData;
 			const favorite = userFavorites.get(product.id);
+			const supplierRank = supplierPriorities.get(product.supplierId) ?? 999;
 
-			matchedProducts.push({
+			matchedProductsWithPriority.push({
 				id: product.id,
 				name: product.name,
 				sku: product.sku,
@@ -229,20 +414,39 @@ export async function searchProjectProducts(
 				unit: product.unit,
 				pricePerUnit: product.pricePerUnit,
 				categoryName: category?.name || null,
-				subcategoryName: null, // Simplified - can add later if needed
+				subcategoryName: null,
 				matchScore: match.score,
 				matchReason: match.reason,
-				// Include smart quantity suggestion if user has ordered before
 				usualQuantity: favorite?.defaultQuantity,
-				orderCount: favorite?.usageCount
+				orderCount: favorite?.usageCount,
+				_supplierRank: supplierRank
 			});
 		}
 	}
 
+	// Sort by score, using supplier priority as tie-breaker for similar scores (within 0.1)
+	matchedProductsWithPriority.sort((a, b) => {
+		const scoreDiff = b.matchScore - a.matchScore;
+		// If scores are within 0.1 of each other, use supplier priority
+		if (Math.abs(scoreDiff) <= 0.1) {
+			return a._supplierRank - b._supplierRank;
+		}
+		return scoreDiff;
+	});
+
+	// Remove internal field before returning
+	const matchedProducts: ProductMatch[] = matchedProductsWithPriority.map(
+		({ _supplierRank, ...product }) => product
+	);
+
+	// Wait for supplier suggestions
+	const supplierSuggestions = await supplierSuggestionsPromise;
+
 	return {
 		query: itemDescription,
 		products: matchedProducts,
-		totalFound: matchedProducts.length
+		totalFound: matchedProducts.length,
+		supplierSuggestions: supplierSuggestions.length > 0 ? supplierSuggestions : undefined
 	};
 }
 

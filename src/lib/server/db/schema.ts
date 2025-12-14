@@ -123,6 +123,7 @@ export const supplier = pgTable('supplier', {
 	name: text('name').notNull(),
 	contactEmail: text('contact_email'),
 	shopUrl: text('shop_url'), // External PunchOut catalog URL
+	description: text('description'), // Used by voice assistant to suggest external catalog for relevant searches
 	createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull()
 });
 

@@ -5,12 +5,13 @@ import { order, orderItem, product } from '$lib/server/db/schema';
 import { eq, and, desc, gte, lte } from 'drizzle-orm';
 
 export interface OrderHistoryItem {
-	productId: string;
+	productId: string | null;
 	productName: string;
 	sku: string;
 	quantity: number;
 	pricePerUnit: number;
 	unit: string;
+	isPunchout?: boolean;
 }
 
 export interface PastOrder {
@@ -167,17 +168,22 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 	const result: PastOrder[] = [];
 
 	for (const o of orders) {
+		// Use LEFT JOIN to include PunchOut items (which have null productId)
 		const items = await db
 			.select({
 				productId: orderItem.productId,
 				quantity: orderItem.quantity,
 				pricePerUnit: orderItem.pricePerUnit,
 				productName: product.name,
-				sku: product.sku,
-				unit: product.unit
+				productSku: product.sku,
+				productUnit: product.unit,
+				// PunchOut fields (used when productId is null)
+				punchoutName: orderItem.punchoutName,
+				punchoutSku: orderItem.punchoutSku,
+				punchoutUnit: orderItem.punchoutUnit
 			})
 			.from(orderItem)
-			.innerJoin(product, eq(orderItem.productId, product.id))
+			.leftJoin(product, eq(orderItem.productId, product.id))
 			.where(eq(orderItem.orderId, o.id));
 
 		result.push({
@@ -187,11 +193,12 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 			status: o.status,
 			items: items.map((item) => ({
 				productId: item.productId,
-				productName: item.productName,
-				sku: item.sku,
+				productName: item.productName ?? item.punchoutName ?? 'Unknown',
+				sku: item.productSku ?? item.punchoutSku ?? 'N/A',
 				quantity: item.quantity,
 				pricePerUnit: item.pricePerUnit,
-				unit: item.unit
+				unit: item.productUnit ?? item.punchoutUnit ?? 'unit',
+				isPunchout: item.productId === null
 			}))
 		});
 	}

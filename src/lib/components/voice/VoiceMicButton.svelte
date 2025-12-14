@@ -23,6 +23,15 @@
 		products: ProductMatch[];
 	}
 
+	interface SupplierSuggestion {
+		id: string;
+		name: string;
+		shopUrl: string;
+		description: string;
+		matchScore: number;
+		matchReason: string;
+	}
+
 	// Context product for tracking displayed products
 	interface ContextProduct {
 		index: number;
@@ -46,6 +55,7 @@
 		};
 		recommendations: Recommendation[];
 		noMatchMessage: string | null;
+		supplierSuggestions?: SupplierSuggestion[];
 	}
 
 	interface SelectProductResult {
@@ -186,6 +196,7 @@
 	let state = $state<VoiceState>('idle');
 	let transcription = $state('');
 	let recommendations = $state<Recommendation[]>([]);
+	let supplierSuggestions = $state<SupplierSuggestion[]>([]);
 	let errorMessage = $state('');
 	let noMatchMessage = $state<string | null>(null);
 	let feedbackMessage = $state<string | null>(null);
@@ -363,6 +374,7 @@
 					const searchResult = result as NewSearchResult;
 					transcription = searchResult.transcription;
 					recommendations = searchResult.recommendations;
+					supplierSuggestions = searchResult.supplierSuggestions || [];
 					noMatchMessage = searchResult.noMatchMessage;
 					state = 'results';
 
@@ -719,10 +731,20 @@
 		state = 'idle';
 		transcription = '';
 		recommendations = [];
+		supplierSuggestions = [];
 		errorMessage = '';
 		noMatchMessage = null;
 		feedbackMessage = null;
 		conversationContext = null;
+	}
+
+	function openSupplierShop(shopUrl: string) {
+		console.log('[openSupplierShop] shopUrl:', shopUrl);
+		// Construct return URL for PunchOut
+		const returnUrl = encodeURIComponent(`${window.location.origin}/api/punchout/return`);
+		const fullUrl = `${shopUrl}?returnUrl=${returnUrl}`;
+		console.log('[openSupplierShop] navigating to:', fullUrl);
+		window.location.href = fullUrl;
 	}
 
 	function getMicButtonClasses(): string {
@@ -890,5 +912,43 @@
 			onClear={clearResults}
 			onProductsIndexed={handleProductsIndexed}
 		/>
+	{/if}
+
+	<!-- External Supplier Suggestions -->
+	{#if supplierSuggestions.length > 0 && (showResults || state === 'results')}
+		<div class="bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border border-amber-200 p-4 mt-4">
+			<div class="flex items-center gap-2 mb-3">
+				<svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+				</svg>
+				<span class="font-medium text-amber-800">
+					{recommendations.some(r => r.products.length > 0)
+						? 'Also check these supplier catalogs'
+						: 'Try these external catalogs'}
+				</span>
+			</div>
+			<div class="space-y-2">
+				{#each supplierSuggestions as supplier (supplier.id)}
+					<button
+						type="button"
+						onclick={() => openSupplierShop(supplier.shopUrl)}
+						class="w-full flex items-center gap-3 p-3 bg-white rounded-lg border border-amber-200 hover:bg-amber-50 transition-colors text-left cursor-pointer touch-manipulation"
+					>
+						<div class="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+							<svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+							</svg>
+						</div>
+						<div class="flex-1 min-w-0">
+							<span class="font-medium text-gray-900 block truncate">{supplier.name}</span>
+							<span class="text-sm text-gray-600 block truncate">{supplier.description}</span>
+						</div>
+						<svg class="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+						</svg>
+					</button>
+				{/each}
+			</div>
+		</div>
 	{/if}
 </div>

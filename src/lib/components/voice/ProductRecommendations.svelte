@@ -46,15 +46,26 @@
 	let quantityValue = $state(1);
 
 	// Compute globally indexed products across all recommendations
+	// Filter out yellow results (0.4-0.7) when there are at least 2 green results (>= 0.7)
 	const indexedRecommendations = $derived.by(() => {
 		let globalIndex = 1;
-		return recommendations.map((rec) => ({
-			...rec,
-			products: rec.products.map((product) => ({
-				...product,
-				globalIndex: globalIndex++
-			}))
-		}));
+		return recommendations.map((rec) => {
+			// Count green results (score >= 0.7)
+			const greenCount = rec.products.filter(p => p.matchScore >= 0.7).length;
+
+			// If we have at least 2 green results, filter out yellow ones
+			const filteredProducts = greenCount >= 2
+				? rec.products.filter(p => p.matchScore >= 0.7 || p.matchScore < 0.4)
+				: rec.products;
+
+			return {
+				...rec,
+				products: filteredProducts.map((product) => ({
+					...product,
+					globalIndex: globalIndex++
+				}))
+			};
+		});
 	});
 
 	// Build indexed products list for context and notify parent

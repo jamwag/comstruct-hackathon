@@ -47,6 +47,7 @@ export const actions: Actions = {
 		const name = formData.get('name');
 		const contactEmail = formData.get('contactEmail');
 		const shopUrl = formData.get('shopUrl');
+		const description = formData.get('description');
 
 		if (typeof name !== 'string' || name.trim().length === 0) {
 			return fail(400, { message: 'Supplier name is required' });
@@ -67,7 +68,9 @@ export const actions: Actions = {
 				name: name.trim(),
 				contactEmail:
 					typeof contactEmail === 'string' && contactEmail.trim() ? contactEmail.trim() : null,
-				shopUrl: typeof shopUrl === 'string' && shopUrl.trim() ? shopUrl.trim() : null
+				shopUrl: typeof shopUrl === 'string' && shopUrl.trim() ? shopUrl.trim() : null,
+				description:
+					typeof description === 'string' && description.trim() ? description.trim() : null
 			})
 			.where(eq(table.supplier.id, params.id));
 

@@ -114,7 +114,14 @@ function createOfflineStore() {
 						projectId: order.projectId,
 						items: order.items.map((item) => ({
 							productId: item.productId,
-							quantity: item.quantity
+							quantity: item.quantity,
+							// Include full details for PunchOut items (productId starts with 'punchout-')
+							...(item.productId.startsWith('punchout-') && {
+								name: item.name,
+								sku: item.sku,
+								pricePerUnit: item.pricePerUnit,
+								unit: item.unit
+							})
 						})),
 						notes: order.kitName ? `${order.kitName}${order.notes ? ` - ${order.notes}` : ''}` : order.notes,
 						priority: order.priority

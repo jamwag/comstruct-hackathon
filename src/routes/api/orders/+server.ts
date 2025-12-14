@@ -20,7 +20,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const body = await request.json();
 	const { projectId, items, notes } = body as {
 		projectId: string;
-		items: Array<{ productId: string; quantity: number }>;
+		items: Array<{
+			productId: string;
+			quantity: number;
+			// PunchOut items include these fields directly
+			name?: string;
+			sku?: string;
+			pricePerUnit?: number;
+			unit?: string;
+		}>;
 		notes?: string;
 	};
 
@@ -57,27 +65,28 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	const project = projects[0];
 
-	// Get product details
-	const productIds = items.map((i) => i.productId);
-	const products = await db
-		.select()
-		.from(table.product)
-		.where(eq(table.product.id, productIds[0])); // TODO: use inArray for multiple
+	// Separate regular products from PunchOut items
+	const regularItems = items.filter((i) => !i.productId.startsWith('punchout-'));
+	const punchoutItems = items.filter((i) => i.productId.startsWith('punchout-'));
 
-	// For now, fetch all and filter (simple approach)
+	// Get product details for regular items
 	const allProducts = await db.select().from(table.product);
 	const productMap = new Map(allProducts.map((p) => [p.id, p]));
 
-	// Calculate total
+	// Calculate total and build order items
 	let totalCents = 0;
 	const orderItems: Array<{
-		productId: string;
+		productId: string | null;
 		quantity: number;
 		pricePerUnit: number;
 		name: string;
+		isPunchout: boolean;
+		punchoutSku?: string;
+		punchoutUnit?: string;
 	}> = [];
 
-	for (const item of items) {
+	// Process regular products
+	for (const item of regularItems) {
 		const product = productMap.get(item.productId);
 		if (!product) {
 			throw error(400, `Product not found: ${item.productId}`);
@@ -87,7 +96,25 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			productId: item.productId,
 			quantity: item.quantity,
 			pricePerUnit: product.pricePerUnit,
-			name: product.name
+			name: product.name,
+			isPunchout: false
+		});
+	}
+
+	// Process PunchOut items (they come with their own price/name info)
+	for (const item of punchoutItems) {
+		if (!item.pricePerUnit || !item.name) {
+			throw error(400, `PunchOut item missing required fields: ${item.productId}`);
+		}
+		totalCents += item.pricePerUnit * item.quantity;
+		orderItems.push({
+			productId: null, // PunchOut items don't have a product ID in our DB
+			quantity: item.quantity,
+			pricePerUnit: item.pricePerUnit,
+			name: item.name,
+			isPunchout: true,
+			punchoutSku: item.sku,
+			punchoutUnit: item.unit
 		});
 	}
 
@@ -120,7 +147,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			productId: item.productId,
 			quantity: item.quantity,
 			pricePerUnit: item.pricePerUnit,
-			totalCents: item.pricePerUnit * item.quantity
+			totalCents: item.pricePerUnit * item.quantity,
+			// PunchOut item fields
+			punchoutSku: item.isPunchout ? item.punchoutSku : null,
+			punchoutName: item.isPunchout ? item.name : null,
+			punchoutUnit: item.isPunchout ? item.punchoutUnit : null
 		});
 	}
 

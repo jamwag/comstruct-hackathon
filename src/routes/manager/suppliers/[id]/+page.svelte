@@ -103,6 +103,20 @@
 						</p>
 					</div>
 
+					<div>
+						<label for="description" class="block text-sm font-medium text-gray-700">Voice Search Description</label>
+						<textarea
+							id="description"
+							name="description"
+							rows="2"
+							placeholder="e.g., Order safety gloves, protective eyewear, and safety boots here"
+							class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+						>{data.supplier.description || ''}</textarea>
+						<p class="mt-1 text-xs text-gray-500">
+							Used by voice assistant to suggest this supplier's external catalog for relevant searches.
+						</p>
+					</div>
+
 					{#if form?.message}
 						<p class="text-red-600 text-sm">{form.message}</p>
 					{/if}
@@ -119,7 +133,7 @@
 			</div>
 		{:else}
 			<div class="p-6">
-				<dl class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+				<dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div>
 						<dt class="text-sm font-medium text-gray-500">Contact Email</dt>
 						<dd class="mt-1 text-sm text-gray-900">
@@ -141,6 +155,16 @@
 								</a>
 							{:else}
 								<span class="text-gray-400">Not configured</span>
+							{/if}
+						</dd>
+					</div>
+					<div>
+						<dt class="text-sm font-medium text-gray-500">Voice Search Description</dt>
+						<dd class="mt-1 text-sm text-gray-900">
+							{#if data.supplier.description}
+								{data.supplier.description}
+							{:else}
+								<span class="text-gray-400">Not set</span>
 							{/if}
 						</dd>
 					</div>

@@ -79,7 +79,14 @@
 			projectId: data.project.id,
 			items: cartItems.map((item) => ({
 				productId: item.productId,
-				quantity: item.quantity
+				quantity: item.quantity,
+				// Include full details for PunchOut items (productId starts with 'punchout-')
+				...(item.productId.startsWith('punchout-') && {
+					name: item.name,
+					sku: item.sku,
+					pricePerUnit: item.pricePerUnit,
+					unit: item.unit
+				})
 			})),
 			notes: cartState.note,
 			priority: cartState.priority

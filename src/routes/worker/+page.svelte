@@ -225,8 +225,9 @@
 				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					{#each suppliersWithShops as supplier (supplier.id)}
 						<button
+							type="button"
 							onclick={() => openSupplierShop(supplier.shopUrl!)}
-							class="flex items-center gap-3 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors text-left border border-gray-200"
+							class="flex items-center gap-3 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors text-left border border-gray-200 cursor-pointer touch-manipulation"
 						>
 							<div
 								class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0"
