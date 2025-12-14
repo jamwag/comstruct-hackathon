@@ -74,7 +74,8 @@ export const actions: Actions = {
 			}
 
 			// Handle Excel/CSV files
-			const workbook = XLSX.read(buffer, { type: 'array' });
+			// codepage 65001 = UTF-8 encoding for proper umlaut handling in CSV
+			const workbook = XLSX.read(buffer, { type: 'array', codepage: 65001 });
 			const sheetName = workbook.SheetNames[0];
 			const sheet = workbook.Sheets[sheetName];
 			const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
@@ -147,7 +148,8 @@ export const actions: Actions = {
 
 		try {
 			const buffer = await file.arrayBuffer();
-			const workbook = XLSX.read(buffer, { type: 'array' });
+			// codepage 65001 = UTF-8 encoding for proper umlaut handling in CSV
+			const workbook = XLSX.read(buffer, { type: 'array', codepage: 65001 });
 			const sheetName = workbook.SheetNames[0];
 			const sheet = workbook.Sheets[sheetName];
 			const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
