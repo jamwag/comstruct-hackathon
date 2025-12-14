@@ -61,6 +61,16 @@
 			>
 				Assigned Products
 			</a>
+			{#if currentProjectId}
+				<a
+					href="/manager/projects/{currentProjectId}/kits"
+					class="block px-3 py-2 rounded-md font-medium {isActive('/manager/projects/') && currentPath.includes('/kits')
+						? 'bg-blue-50 text-blue-700'
+						: 'text-gray-700 hover:bg-gray-100'}"
+				>
+					Product Kits
+				</a>
+			{/if}
 			<a
 				href="/manager/orders"
 				class="block px-3 py-2 rounded-md font-medium {isActive('/manager/orders')
@@ -152,7 +162,7 @@
 					</svg>
 				</a>
 			</div>
-			<h2 class="text-lg font-semibold text-gray-900">Manager Portal</h2>
+			<h2 class="text-lg font-semibold text-gray-900">{isProcurement ? 'Procurement Console' : 'Manager Portal'}</h2>
 		</header>
 
 		<main class="flex-1 overflow-y-auto p-6">

@@ -65,11 +65,6 @@
 					const { orderNumber } = await response.json();
 					kitOrderResult = { success: true, orderNumber };
 					isOrdering = false;
-					// Wait a moment then redirect
-					setTimeout(() => {
-						closeKitModal();
-						goto(`/worker/history?ordered=${orderNumber}`);
-					}, 1500);
 					return;
 				}
 				// Server error - fall through to queue
