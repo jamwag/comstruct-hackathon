@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
-	import { cart, type CartItem, type CartState } from '$lib/stores/cart';
+	import { cart, type CartState } from '$lib/stores/cart';
+	import { offlineStore } from '$lib/stores/offline';
 	import { onDestroy } from 'svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -10,6 +10,17 @@
 	let isSubmitting = $state(false);
 	let showNoteInput = $state(false);
 	let noteInput = $state('');
+
+	// Offline-specific state
+	let offlineSaved = $state(false);
+	let submitResult = $state<{
+		success: boolean;
+		isAutoApproved?: boolean;
+		totalCents?: number;
+		isOffline?: boolean;
+	} | null>(null);
+
+	const isOnline = $derived($offlineStore.isOnline);
 
 	const unsubscribe = cart.subscribe((state) => {
 		cartState = state;
@@ -50,12 +61,79 @@
 		showNoteInput = false;
 	}
 
-	// Handle successful submission
+	// Handle successful submission from server action
 	$effect(() => {
 		if (form?.success) {
 			cart.clear();
 		}
 	});
+
+	// Custom submit handler with offline support
+	async function handleSubmit(event: SubmitEvent) {
+		event.preventDefault();
+		isSubmitting = true;
+		submitResult = null;
+
+		const totalCents = getTotal();
+		const orderPayload = {
+			projectId: data.project.id,
+			items: cartItems.map((item) => ({
+				productId: item.productId,
+				quantity: item.quantity
+			})),
+			notes: cartState.note,
+			priority: cartState.priority
+		};
+
+		// Try online submission first
+		if (navigator.onLine) {
+			try {
+				const response = await fetch('/api/orders', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(orderPayload)
+				});
+
+				if (response.ok) {
+					const result = await response.json();
+					cart.clear();
+					submitResult = {
+						success: true,
+						isAutoApproved: result.isAutoApproved,
+						totalCents: result.totalCents
+					};
+					isSubmitting = false;
+					return;
+				}
+				// Server error - fall through to queue
+			} catch {
+				// Network error - fall through to queue
+			}
+		}
+
+		// Offline or failed - queue the order
+		offlineStore.queueOrder({
+			projectId: data.project.id,
+			items: cartItems.map((item) => ({
+				productId: item.productId,
+				name: item.name,
+				sku: item.sku,
+				quantity: item.quantity,
+				pricePerUnit: item.pricePerUnit,
+				unit: item.unit
+			})),
+			notes: cartState.note,
+			priority: cartState.priority
+		});
+
+		cart.clear();
+		submitResult = {
+			success: true,
+			isOffline: true,
+			totalCents
+		};
+		isSubmitting = false;
+	}
 </script>
 
 <svelte:head>
@@ -77,20 +155,36 @@
 		<p class="text-sm text-gray-500">Project: {data.project.name}</p>
 	</div>
 
-	{#if form?.success}
+	{#if form?.success || submitResult?.success}
 		<!-- Success Message -->
-		<div class="bg-green-50 border border-green-200 rounded-lg p-6 text-center space-y-4">
+		{@const result = submitResult || form}
+		<div class="border rounded-lg p-6 text-center space-y-4 {result?.isOffline ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'}">
 			<div class="text-5xl">
-				{form.isAutoApproved ? '✅' : '⏳'}
-			</div>
-			<h3 class="text-xl font-bold text-green-800">
-				{form.isAutoApproved ? 'Order Approved!' : 'Order Submitted'}
-			</h3>
-			<p class="text-green-700">
-				{#if form.isAutoApproved}
-					Your order for CHF {formatPrice(form.totalCents)} has been automatically approved.
+				{#if result?.isOffline}
+					📱
+				{:else if result?.isAutoApproved}
+					✅
 				{:else}
-					Your order for CHF {formatPrice(form.totalCents)} is pending manager approval.
+					⏳
+				{/if}
+			</div>
+			<h3 class="text-xl font-bold {result?.isOffline ? 'text-blue-800' : 'text-green-800'}">
+				{#if result?.isOffline}
+					Order Saved Offline
+				{:else if result?.isAutoApproved}
+					Order Approved!
+				{:else}
+					Order Submitted
+				{/if}
+			</h3>
+			<p class="{result?.isOffline ? 'text-blue-700' : 'text-green-700'}">
+				{#if result?.isOffline}
+					Your order for CHF {formatPrice(result?.totalCents ?? 0)} has been saved.
+					It will be submitted automatically when you're back online.
+				{:else if result?.isAutoApproved}
+					Your order for CHF {formatPrice(result?.totalCents ?? 0)} has been automatically approved.
+				{:else}
+					Your order for CHF {formatPrice(result?.totalCents ?? 0)} is pending manager approval.
 				{/if}
 			</p>
 			<div class="flex justify-center gap-3 pt-4">
@@ -303,33 +397,30 @@
 		</div>
 
 		<!-- Submit Form -->
-		<form
-			method="post"
-			action="?/submit"
-			use:enhance={() => {
-				isSubmitting = true;
-				return async ({ update }) => {
-					await update();
-					isSubmitting = false;
-				};
-			}}
-		>
-			<input type="hidden" name="projectId" value={data.project.id} />
-			<input type="hidden" name="cart" value={JSON.stringify(cartItems)} />
-			<input type="hidden" name="notes" value={cartState.note || ''} />
-			<input type="hidden" name="priority" value={cartState.priority} />
-
+		<form onsubmit={handleSubmit}>
 			{#if form?.message}
 				<p class="text-red-600 text-sm mb-4">{form.message}</p>
+			{/if}
+
+			{#if !isOnline}
+				<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+					<p class="text-yellow-800 text-sm">
+						You're offline. Your order will be saved and submitted when you reconnect.
+					</p>
+				</div>
 			{/if}
 
 			<button
 				type="submit"
 				disabled={isSubmitting}
-				class="w-full bg-green-600 text-white py-4 px-6 rounded-lg font-bold text-lg hover:bg-green-700 active:scale-95 transition-all disabled:opacity-50"
+				class="w-full py-4 px-6 rounded-lg font-bold text-lg active:scale-95 transition-all disabled:opacity-50 {isOnline
+					? 'bg-green-600 text-white hover:bg-green-700'
+					: 'bg-blue-600 text-white hover:bg-blue-700'}"
 			>
 				{#if isSubmitting}
-					Submitting...
+					{isOnline ? 'Submitting...' : 'Saving...'}
+				{:else if !isOnline}
+					Save Order for Later
 				{:else if isOverThreshold()}
 					Submit for Approval
 				{:else}

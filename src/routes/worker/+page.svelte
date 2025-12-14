@@ -4,6 +4,7 @@
 	import CMaterialsInfoBanner from '$lib/components/CMaterialsInfoBanner.svelte';
 	import { selectedProjectId } from '$lib/stores/selectedProject';
 	import { cart } from '$lib/stores/cart';
+	import { offlineStore } from '$lib/stores/offline';
 	import { page } from '$app/stores';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
@@ -20,47 +21,81 @@
 	// Kit modal state
 	let selectedKit = $state<typeof data.kits[0] | null>(null);
 	let isOrdering = $state(false);
+	let kitOrderResult = $state<{ success: boolean; isOffline?: boolean; orderNumber?: string } | null>(null);
+
+	// Offline state
+	const isOnline = $derived($offlineStore.isOnline);
 
 	function openKitModal(kit: typeof data.kits[0]) {
 		selectedKit = kit;
+		kitOrderResult = null;
 	}
 
 	function closeKitModal() {
 		selectedKit = null;
+		kitOrderResult = null;
 	}
 
 	async function orderKit() {
 		if (!selectedKit || !currentProjectId) return;
 
 		isOrdering = true;
-		try {
-			// Submit order directly via API
-			const response = await fetch('/api/orders', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					projectId: currentProjectId,
-					items: selectedKit.items.map(item => ({
-						productId: item.productId,
-						quantity: item.quantity
-					})),
-					notes: `Kit: ${selectedKit.name}`
-				})
-			});
+		kitOrderResult = null;
 
-			if (response.ok) {
-				const { orderNumber } = await response.json();
-				closeKitModal();
-				goto(`/worker/history?ordered=${orderNumber}`);
-			} else {
-				const err = await response.json();
-				alert(err.message || 'Failed to place order');
+		// Build the order payload
+		const orderPayload = {
+			projectId: currentProjectId,
+			items: selectedKit.items.map(item => ({
+				productId: item.productId,
+				quantity: item.quantity
+			})),
+			notes: `Kit: ${selectedKit.name}`
+		};
+
+		// Try online submission first
+		if (navigator.onLine) {
+			try {
+				const response = await fetch('/api/orders', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(orderPayload)
+				});
+
+				if (response.ok) {
+					const { orderNumber } = await response.json();
+					kitOrderResult = { success: true, orderNumber };
+					isOrdering = false;
+					// Wait a moment then redirect
+					setTimeout(() => {
+						closeKitModal();
+						goto(`/worker/history?ordered=${orderNumber}`);
+					}, 1500);
+					return;
+				}
+				// Server error - fall through to queue
+			} catch {
+				// Network error - fall through to queue
 			}
-		} catch (e) {
-			alert('Failed to place order');
-		} finally {
-			isOrdering = false;
 		}
+
+		// Offline or failed - queue the kit order
+		offlineStore.queueOrder({
+			projectId: currentProjectId,
+			items: selectedKit.items.map(item => ({
+				productId: item.productId,
+				name: item.name,
+				sku: item.sku,
+				quantity: item.quantity,
+				pricePerUnit: item.pricePerUnit,
+				unit: item.unit
+			})),
+			notes: null,
+			priority: 'normal',
+			kitName: selectedKit.name
+		});
+
+		kitOrderResult = { success: true, isOffline: true };
+		isOrdering = false;
 	}
 
 	// Handle PunchOut return - merge items from cookie into cart
@@ -280,29 +315,67 @@
 
 			<!-- Total & Actions -->
 			<div class="border-t bg-gray-50 px-6 py-4">
-				<div class="flex items-center justify-between mb-4">
-					<span class="text-gray-600 font-medium">Total</span>
-					<span class="text-2xl font-bold text-gray-900">CHF {(selectedKit.totalPrice / 100).toFixed(2)}</span>
-				</div>
-				<div class="flex gap-3">
-					<button
-						onclick={closeKitModal}
-						class="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-300 active:scale-95 transition-all"
-					>
-						Cancel
-					</button>
-					<button
-						onclick={orderKit}
-						disabled={isOrdering}
-						class="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 active:scale-95 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-					>
-						{#if isOrdering}
-							Ordering...
-						{:else}
-							Order Now
+				{#if kitOrderResult?.success}
+					<!-- Success message -->
+					<div class="text-center py-4">
+						<div class="text-4xl mb-2">
+							{kitOrderResult.isOffline ? '📱' : '✅'}
+						</div>
+						<p class="font-bold {kitOrderResult.isOffline ? 'text-blue-700' : 'text-green-700'}">
+							{kitOrderResult.isOffline ? 'Kit Saved Offline' : 'Kit Ordered!'}
+						</p>
+						<p class="text-sm text-gray-600 mt-1">
+							{kitOrderResult.isOffline
+								? 'Will be submitted when you reconnect'
+								: `Order #${kitOrderResult.orderNumber}`}
+						</p>
+						{#if kitOrderResult.isOffline}
+							<button
+								onclick={closeKitModal}
+								class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700"
+							>
+								Done
+							</button>
 						{/if}
-					</button>
-				</div>
+					</div>
+				{:else}
+					<div class="flex items-center justify-between mb-4">
+						<span class="text-gray-600 font-medium">Total</span>
+						<span class="text-2xl font-bold text-gray-900">CHF {(selectedKit.totalPrice / 100).toFixed(2)}</span>
+					</div>
+
+					{#if !isOnline}
+						<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+							<p class="text-yellow-800 text-sm text-center">
+								You're offline. Kit will be saved for later.
+							</p>
+						</div>
+					{/if}
+
+					<div class="flex gap-3">
+						<button
+							onclick={closeKitModal}
+							class="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-300 active:scale-95 transition-all"
+						>
+							Cancel
+						</button>
+						<button
+							onclick={orderKit}
+							disabled={isOrdering}
+							class="flex-1 px-4 py-3 rounded-xl font-bold active:scale-95 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed {isOnline
+								? 'bg-green-600 text-white hover:bg-green-700'
+								: 'bg-blue-600 text-white hover:bg-blue-700'}"
+						>
+							{#if isOrdering}
+								{isOnline ? 'Ordering...' : 'Saving...'}
+							{:else if !isOnline}
+								Save for Later
+							{:else}
+								Order Now
+							{/if}
+						</button>
+					</div>
+				{/if}
 			</div>
 		</div>
 	</div>

@@ -5,6 +5,7 @@
 	import { onMount } from 'svelte';
 	import BottomNav from '$lib/components/BottomNav.svelte';
 	import ProjectSelector from '$lib/components/ProjectSelector.svelte';
+	import OfflineIndicator from '$lib/components/OfflineIndicator.svelte';
 	import { selectedProjectId } from '$lib/stores/selectedProject';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
@@ -29,6 +30,8 @@
 			</form>
 		</div>
 	</header>
+
+	<OfflineIndicator />
 
 	<main class="p-4">
 		{@render children()}
