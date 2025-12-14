@@ -217,68 +217,60 @@
 		<!-- Cart Items -->
 		<div class="bg-white rounded-lg shadow divide-y">
 			{#each cartItems as item (item.productId)}
-				<div class="p-4 flex items-center gap-4">
-					<div class="flex-1">
-						<h4 class="font-medium text-gray-900">{item.name}</h4>
-						<p class="text-sm text-gray-500">{item.sku}</p>
-						<p class="text-sm text-gray-600">
-							CHF {formatPrice(item.pricePerUnit)} x {item.quantity} {item.unit}
-						</p>
+				<div class="p-4">
+					<!-- Row 1: Title, SKU and Remove button -->
+					<div class="flex items-start justify-between gap-3 mb-3">
+						<div class="flex-1 min-w-0">
+							<h4 class="font-semibold text-gray-900 truncate">{item.name}</h4>
+							<p class="text-sm text-gray-500">{item.sku} · CHF {formatPrice(item.pricePerUnit)}/{item.unit}</p>
+						</div>
+						<button
+							type="button"
+							class="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+							onclick={() => cart.removeItem(item.productId)}
+							aria-label="Remove item"
+						>
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+							</svg>
+						</button>
 					</div>
-					<div class="text-right">
-						<p class="font-bold text-gray-900">
-							CHF {formatPrice(item.pricePerUnit * item.quantity)}
-						</p>
-						<div class="flex items-center gap-2 mt-2">
+
+					<!-- Row 2: Quantity controls and Total price -->
+					<div class="flex items-center justify-between gap-4">
+						<div class="flex items-center gap-2">
 							<button
 								type="button"
-								class="w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+								class="w-12 h-12 rounded-xl bg-gray-100 text-gray-700 font-bold text-xl hover:bg-gray-200 active:scale-95 transition-all flex items-center justify-center"
 								onclick={() => cart.updateQuantity(item.productId, item.quantity - 1)}
 							>
 								-
 							</button>
-							<span class="w-8 text-center">{item.quantity}</span>
+							<span class="w-14 text-center text-xl font-bold text-gray-900">{item.quantity}</span>
 							<button
 								type="button"
-								class="w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+								class="w-12 h-12 rounded-xl bg-gray-100 text-gray-700 font-bold text-xl hover:bg-gray-200 active:scale-95 transition-all flex items-center justify-center"
 								onclick={() => cart.updateQuantity(item.productId, item.quantity + 1)}
 							>
 								+
 							</button>
-							<button
-								type="button"
-								class="ml-2 text-red-600 hover:text-red-800 text-sm"
-								onclick={() => cart.removeItem(item.productId)}
-							>
-								Remove
-							</button>
+						</div>
+						<div class="text-right">
+							<p class="text-xl font-bold text-gray-900">
+								CHF {formatPrice(item.pricePerUnit * item.quantity)}
+							</p>
 						</div>
 					</div>
 				</div>
 			{/each}
 		</div>
 
-		<!-- Total and Threshold Info -->
-		<div class="bg-white rounded-lg shadow p-4 space-y-3">
+		<!-- Total -->
+		<div class="bg-white rounded-lg shadow p-4">
 			<div class="flex justify-between items-center text-lg">
 				<span class="font-medium">Total:</span>
 				<span class="font-bold text-blue-600">CHF {formatPrice(getTotal())}</span>
 			</div>
-
-			{#if isOverThreshold()}
-				<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-					<p class="text-yellow-800 text-sm">
-						<strong>Note:</strong> Orders over CHF {formatPrice(getThreshold())} require manager approval.
-						Your order will be submitted for review.
-					</p>
-				</div>
-			{:else}
-				<div class="bg-green-50 border border-green-200 rounded-lg p-3">
-					<p class="text-green-800 text-sm">
-						<strong>Auto-approved:</strong> Orders under CHF {formatPrice(getThreshold())} are automatically approved.
-					</p>
-				</div>
-			{/if}
 		</div>
 
 		<!-- Large Order Warning (Misuse Prevention) -->

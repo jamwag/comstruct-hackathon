@@ -94,14 +94,16 @@
 </svelte:head>
 
 <div class="space-y-4">
-	<!-- Header -->
-	<div class="bg-white rounded-lg shadow p-4">
-		<h2 class="text-xl font-bold text-gray-900">Order Site Supplies</h2>
-		<p class="text-sm text-gray-500 mt-1">Everyday materials for your project</p>
-		{#if data.selectedProject}
-			<p class="text-xs text-gray-400 mt-1">Project: {data.selectedProject.name}</p>
-		{/if}
-	</div>
+	<!-- Back button -->
+	<a
+		href="/worker"
+		class="inline-flex items-center text-blue-600 hover:underline font-medium"
+	>
+		<svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+		</svg>
+		Back to Home
+	</a>
 
 	{#if data.projects.length === 0 || !data.selectedProject}
 		<!-- No project assigned or selected -->

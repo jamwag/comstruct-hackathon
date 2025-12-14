@@ -8,6 +8,7 @@
 	import { page } from '$app/stores';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
+	// Note: cart is still needed for PunchOut return handling
 
 	let { data }: { data: PageData } = $props();
 
@@ -159,7 +160,7 @@
 		</div>
 	{:else}
 		<!-- C-Materials Info Banner -->
-		<CMaterialsInfoBanner threshold={selectedProject?.autoApprovalThreshold ? selectedProject.autoApprovalThreshold / 100 : 200} />
+		<CMaterialsInfoBanner />
 
 		<!-- Voice Ordering Section - Main Feature (Enhanced) -->
 		<div

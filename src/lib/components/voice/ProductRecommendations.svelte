@@ -41,6 +41,10 @@
 
 	let { recommendations, onAddToCart, onClear, onProductsIndexed }: Props = $props();
 
+	// Quantity modal state
+	let quantityModalProduct = $state<(Product & { globalIndex: number; suggestedQty: number }) | null>(null);
+	let quantityValue = $state(1);
+
 	// Compute globally indexed products across all recommendations
 	const indexedRecommendations = $derived.by(() => {
 		let globalIndex = 1;
@@ -76,6 +80,21 @@
 
 	function formatPrice(cents: number): string {
 		return (cents / 100).toFixed(2);
+	}
+
+	function openQuantityModal(product: Product & { globalIndex: number }, suggestedQty: number) {
+		quantityModalProduct = { ...product, suggestedQty };
+		quantityValue = suggestedQty;
+	}
+
+	function closeQuantityModal() {
+		quantityModalProduct = null;
+	}
+
+	function confirmAddToCart() {
+		if (!quantityModalProduct || quantityValue < 1) return;
+		handleAddToCart(quantityModalProduct, quantityValue);
+		closeQuantityModal();
 	}
 
 	function handleAddToCart(product: Product, quantity: number) {
@@ -164,61 +183,47 @@
 						{#each rec.products as product (product.id)}
 							{@const isAdded = addedProducts.has(product.id)}
 							{@const suggestedQty = product.usualQuantity || rec.quantity}
-							<div class="px-4 py-3 flex items-center gap-3">
-								<!-- Index badge for voice reference -->
-								<div class="w-8 h-8 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-sm flex-shrink-0">
-									{product.globalIndex}
-								</div>
-
-								<!-- Product info -->
-								<div class="flex-1 min-w-0">
-									<div class="flex items-center gap-2 flex-wrap">
-										<span class="font-medium text-gray-900 truncate">{product.name}</span>
-										<span class="text-xs px-2 py-0.5 rounded {getConfidenceColor(product.matchScore)}">
-											{Math.round(product.matchScore * 100)}% match
-										</span>
+							<div class="px-4 py-3">
+								<!-- Row 1: Index badge + Product name -->
+								<div class="flex items-start gap-3 mb-2">
+									<div class="w-8 h-8 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-sm flex-shrink-0">
+										{product.globalIndex}
 									</div>
-									<div class="text-sm text-gray-500 mt-0.5">
-										<span>{product.sku}</span>
-										{#if product.categoryName}
-											<span class="mx-1">·</span>
-											<span>{product.categoryName}</span>
-										{/if}
-									</div>
-									<div class="text-xs text-gray-400 mt-0.5">{product.matchReason}</div>
-									<!-- Smart quantity suggestion -->
-									{#if product.usualQuantity && product.orderCount}
-										<div class="mt-1 text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded-md inline-flex items-center gap-1">
-											<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-												<path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"/>
-											</svg>
-											<span>You usually order {product.usualQuantity}</span>
+									<div class="flex-1 min-w-0">
+										<div class="font-medium text-gray-900">{product.name}</div>
+										<div class="text-sm text-gray-500 mt-0.5">
+											{product.sku}
+											{#if product.categoryName}
+												<span class="mx-1">·</span>
+												{product.categoryName}
+											{/if}
 										</div>
-									{/if}
+									</div>
+									<span class="text-xs px-2 py-0.5 rounded flex-shrink-0 {getConfidenceColor(product.matchScore)}">
+										{Math.round(product.matchScore * 100)}%
+									</span>
 								</div>
 
-								<!-- Price -->
-								<div class="text-right">
-									<div class="font-bold text-gray-900">CHF {formatPrice(product.pricePerUnit)}</div>
-									<div class="text-xs text-gray-500">per {product.unit}</div>
+								<!-- Row 2: Price + Add button -->
+								<div class="flex items-center justify-between gap-3 ml-11">
+									<div>
+										<span class="font-bold text-gray-900">CHF {formatPrice(product.pricePerUnit)}</span>
+										<span class="text-sm text-gray-500">/ {product.unit}</span>
+									</div>
+									<button
+										onclick={() => openQuantityModal(product, suggestedQty)}
+										disabled={isAdded}
+										class="px-5 py-2 rounded-lg font-medium transition-all {isAdded
+											? 'bg-green-100 text-green-700 cursor-default'
+											: 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'}"
+									>
+										{#if isAdded}
+											Added
+										{:else}
+											Add
+										{/if}
+									</button>
 								</div>
-
-								<!-- Add button -->
-								<button
-									onclick={() => handleAddToCart(product, suggestedQty)}
-									disabled={isAdded}
-									class="px-4 py-2 rounded-lg font-medium min-w-20 transition-all {isAdded
-										? 'bg-green-100 text-green-700 cursor-default'
-										: 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'}"
-								>
-									{#if isAdded}
-										Added
-									{:else if product.usualQuantity}
-										Add {product.usualQuantity}
-									{:else}
-										Add
-									{/if}
-								</button>
 							</div>
 						{/each}
 					</div>
@@ -227,3 +232,103 @@
 		{/each}
 	</div>
 {/if}
+
+<!-- Quantity Modal -->
+{#if quantityModalProduct}
+	<div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+		<!-- Backdrop -->
+		<button
+			class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+			onclick={closeQuantityModal}
+			aria-label="Close"
+		></button>
+
+		<!-- Modal -->
+		<div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in">
+			<!-- Header -->
+			<div class="bg-blue-600 px-5 py-4 text-white">
+				<h3 class="font-bold text-lg">Add to Cart</h3>
+			</div>
+
+			<!-- Content -->
+			<div class="p-5">
+				<div class="mb-4">
+					<p class="font-medium text-gray-900">{quantityModalProduct.name}</p>
+					<p class="text-sm text-gray-500">{quantityModalProduct.sku}</p>
+					<p class="text-sm font-medium text-gray-700 mt-1">
+						CHF {formatPrice(quantityModalProduct.pricePerUnit)} per {quantityModalProduct.unit}
+					</p>
+				</div>
+
+				<!-- Quantity selector -->
+				<div class="mb-4">
+					<label for="quantity" class="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
+					<div class="flex items-center justify-center gap-3">
+						<button
+							onclick={() => quantityValue = Math.max(1, quantityValue - 1)}
+							class="w-14 h-14 flex-shrink-0 rounded-xl bg-gray-100 text-gray-700 font-bold text-2xl hover:bg-gray-200 active:scale-95 transition-all flex items-center justify-center"
+						>
+							-
+						</button>
+						<input
+							id="quantity"
+							type="number"
+							min="1"
+							bind:value={quantityValue}
+							class="w-28 text-center text-2xl font-bold border-2 border-gray-200 rounded-xl py-3 focus:border-blue-500 focus:outline-none"
+						/>
+						<button
+							onclick={() => quantityValue = quantityValue + 1}
+							class="w-14 h-14 flex-shrink-0 rounded-xl bg-gray-100 text-gray-700 font-bold text-2xl hover:bg-gray-200 active:scale-95 transition-all flex items-center justify-center"
+						>
+							+
+						</button>
+					</div>
+				</div>
+
+				<!-- Subtotal -->
+				<div class="bg-gray-50 rounded-lg p-3 mb-4">
+					<div class="flex justify-between items-center">
+						<span class="text-gray-600">Subtotal</span>
+						<span class="text-xl font-bold text-gray-900">
+							CHF {formatPrice(quantityModalProduct.pricePerUnit * quantityValue)}
+						</span>
+					</div>
+				</div>
+
+				<!-- Actions -->
+				<div class="flex gap-3">
+					<button
+						onclick={closeQuantityModal}
+						class="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-300 active:scale-95 transition-all"
+					>
+						Cancel
+					</button>
+					<button
+						onclick={confirmAddToCart}
+						class="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 active:scale-95 transition-all"
+					>
+						Add to Cart
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<style>
+	@keyframes scale-in {
+		from {
+			transform: scale(0.95);
+			opacity: 0;
+		}
+		to {
+			transform: scale(1);
+			opacity: 1;
+		}
+	}
+
+	.animate-scale-in {
+		animation: scale-in 0.2s ease-out;
+	}
+</style>

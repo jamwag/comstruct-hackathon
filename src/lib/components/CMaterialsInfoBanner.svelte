@@ -3,10 +3,9 @@
 
 	interface Props {
 		storageKey?: string;
-		threshold?: number;
 	}
 
-	let { storageKey = 'cmaterials-info-seen', threshold = 200 }: Props = $props();
+	let { storageKey = 'cmaterials-info-seen' }: Props = $props();
 
 	let isExpanded = $state(true);
 
@@ -88,23 +87,7 @@
 					<span>Cables, connectors, cleaning supplies</span>
 				</li>
 			</ul>
-			<div class="mt-4 pt-3 border-t border-blue-200">
-				<p class="text-sm text-blue-700">
-					<svg
-						class="inline w-4 h-4 mr-1 text-green-600"
-						fill="currentColor"
-						viewBox="0 0 20 20"
-					>
-						<path
-							fill-rule="evenodd"
-							d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-							clip-rule="evenodd"
-						/>
-					</svg>
-					Quick orders under <strong>CHF {threshold}</strong> are approved automatically.
-				</p>
-			</div>
-			<div class="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+						<div class="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
 				<p class="text-sm text-orange-800">
 					<svg class="inline w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
 						<path

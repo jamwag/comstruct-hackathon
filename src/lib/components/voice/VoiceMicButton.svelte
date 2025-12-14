@@ -860,6 +860,29 @@
 		</div>
 	{/if}
 
+	<!-- Cart Summary (shown when items in cart) -->
+	{#if $cart.items.length > 0 && projectId}
+		{@const totalItems = $cart.items.reduce((sum, item) => sum + item.quantity, 0)}
+		{@const totalPrice = $cart.items.reduce((sum, item) => sum + item.pricePerUnit * item.quantity, 0)}
+		<div class="bg-white rounded-xl border-2 border-green-200 p-4 shadow-md">
+			<div class="flex items-center justify-between mb-3">
+				<div class="flex items-center gap-2">
+					<span class="text-2xl">🛒</span>
+					<div>
+						<p class="font-semibold text-gray-900">{totalItems} item{totalItems !== 1 ? 's' : ''} in cart</p>
+						<p class="text-sm text-gray-500">CHF {(totalPrice / 100).toFixed(2)} total</p>
+					</div>
+				</div>
+			</div>
+			<a
+				href="/worker/order/checkout?project={projectId}"
+				class="block w-full bg-green-600 text-white py-3 px-4 rounded-lg font-bold text-center hover:bg-green-700 active:scale-95 transition-all"
+			>
+				Review & Checkout
+			</a>
+		</div>
+	{/if}
+
 	<!-- Product recommendations -->
 	{#if showResults}
 		<ProductRecommendations
