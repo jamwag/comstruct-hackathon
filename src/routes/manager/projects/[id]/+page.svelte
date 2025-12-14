@@ -77,6 +77,22 @@
 		</p>
 	</div>
 
+	<!-- Product Kits - Available to both PMs and Procurement -->
+	<div class="bg-white rounded-lg shadow p-6">
+		<div class="flex items-center justify-between">
+			<div>
+				<h3 class="text-lg font-semibold text-gray-900">Product Kits</h3>
+				<p class="text-sm text-gray-500 mt-1">Create quick-order bundles for workers on this project</p>
+			</div>
+			<a
+				href="/manager/projects/{data.project.id}/kits"
+				class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+			>
+				Manage Kits
+			</a>
+		</div>
+	</div>
+
 	<!-- Order Settings - Procurement only -->
 	{#if isProcurement}
 		<div class="bg-white rounded-lg shadow p-6">

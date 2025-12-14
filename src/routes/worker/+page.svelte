@@ -17,6 +17,52 @@
 	// Suppliers with external shop URLs
 	const suppliersWithShops = $derived(data.suppliers.filter((s) => s.shopUrl));
 
+	// Kit modal state
+	let selectedKit = $state<typeof data.kits[0] | null>(null);
+	let isOrdering = $state(false);
+
+	function openKitModal(kit: typeof data.kits[0]) {
+		selectedKit = kit;
+	}
+
+	function closeKitModal() {
+		selectedKit = null;
+	}
+
+	async function orderKit() {
+		if (!selectedKit || !currentProjectId) return;
+
+		isOrdering = true;
+		try {
+			// Submit order directly via API
+			const response = await fetch('/api/orders', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					projectId: currentProjectId,
+					items: selectedKit.items.map(item => ({
+						productId: item.productId,
+						quantity: item.quantity
+					})),
+					notes: `Kit: ${selectedKit.name}`
+				})
+			});
+
+			if (response.ok) {
+				const { orderNumber } = await response.json();
+				closeKitModal();
+				goto(`/worker/history?ordered=${orderNumber}`);
+			} else {
+				const err = await response.json();
+				alert(err.message || 'Failed to place order');
+			}
+		} catch (e) {
+			alert('Failed to place order');
+		} finally {
+			isOrdering = false;
+		}
+	}
+
 	// Handle PunchOut return - merge items from cookie into cart
 	$effect(() => {
 		if (browser && $page.url.searchParams.get('punchout') === '1') {
@@ -114,6 +160,30 @@
 			</div>
 		</div>
 
+		<!-- Quick Kits Section -->
+		{@const projectKits = data.kits.filter(k => k.projectId === currentProjectId)}
+		{#if projectKits.length > 0}
+			<div class="bg-white rounded-lg shadow p-6">
+				<h3 class="text-lg font-semibold text-gray-900 mb-2">Quick Kits</h3>
+				<p class="text-sm text-gray-600 mb-4">
+					One-tap bundles for common tasks
+				</p>
+				<div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+					{#each projectKits as kit (kit.id)}
+						<button
+							onclick={() => openKitModal(kit)}
+							class="flex flex-col items-center p-4 bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl hover:from-amber-100 hover:to-orange-100 transition-all border-2 border-amber-200 hover:border-amber-300 active:scale-95"
+						>
+							<span class="text-3xl mb-2">{kit.icon || '📦'}</span>
+							<span class="font-semibold text-gray-900 text-center text-sm">{kit.name}</span>
+							<span class="text-xs text-gray-500 mt-1">{kit.itemCount} items</span>
+							<span class="text-xs font-medium text-amber-700 mt-1">~CHF {(kit.totalPrice / 100).toFixed(0)}</span>
+						</button>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
 		<!-- External Supplier Catalogs (PunchOut) -->
 		{#if suppliersWithShops.length > 0}
 			<div class="bg-white rounded-lg shadow p-6">
@@ -168,3 +238,100 @@
 		{/if}
 	{/if}
 </div>
+
+<!-- Kit Order Modal -->
+{#if selectedKit}
+	<div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center modal-container">
+		<!-- Backdrop -->
+		<button
+			class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+			onclick={closeKitModal}
+			aria-label="Close"
+		></button>
+
+		<!-- Modal -->
+		<div class="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md max-h-[70vh] overflow-hidden animate-slide-up">
+			<!-- Header -->
+			<div class="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-4 text-white">
+				<div class="flex items-center gap-3">
+					<span class="text-4xl">{selectedKit.icon || '📦'}</span>
+					<div>
+						<h3 class="text-xl font-bold">{selectedKit.name}</h3>
+						<p class="text-amber-100 text-sm">{selectedKit.itemCount} items</p>
+					</div>
+				</div>
+			</div>
+
+			<!-- Items List -->
+			<div class="max-h-64 overflow-y-auto divide-y">
+				{#each selectedKit.items as item (item.productId)}
+					<div class="px-6 py-3 flex items-center justify-between">
+						<div class="flex-1 min-w-0">
+							<div class="font-medium text-gray-900 truncate">{item.name}</div>
+							<div class="text-sm text-gray-500">{item.sku}</div>
+						</div>
+						<div class="text-right ml-4">
+							<div class="font-bold text-gray-900">×{item.quantity}</div>
+							<div class="text-sm text-gray-500">CHF {(item.pricePerUnit * item.quantity / 100).toFixed(2)}</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+
+			<!-- Total & Actions -->
+			<div class="border-t bg-gray-50 px-6 py-4">
+				<div class="flex items-center justify-between mb-4">
+					<span class="text-gray-600 font-medium">Total</span>
+					<span class="text-2xl font-bold text-gray-900">CHF {(selectedKit.totalPrice / 100).toFixed(2)}</span>
+				</div>
+				<div class="flex gap-3">
+					<button
+						onclick={closeKitModal}
+						class="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-300 active:scale-95 transition-all"
+					>
+						Cancel
+					</button>
+					<button
+						onclick={orderKit}
+						disabled={isOrdering}
+						class="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 active:scale-95 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+					>
+						{#if isOrdering}
+							Ordering...
+						{:else}
+							Order Now
+						{/if}
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<style>
+	@keyframes slide-up {
+		from {
+			transform: translateY(100%);
+			opacity: 0;
+		}
+		to {
+			transform: translateY(0);
+			opacity: 1;
+		}
+	}
+
+	.animate-slide-up {
+		animation: slide-up 0.3s ease-out;
+	}
+
+	/* Offset modal above bottom nav on mobile */
+	.modal-container {
+		padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+	}
+
+	@media (min-width: 640px) {
+		.modal-container {
+			padding-bottom: 0;
+		}
+	}
+</style>

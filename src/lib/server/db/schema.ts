@@ -272,3 +272,36 @@ export const userFavorite = pgTable(
 );
 
 export type UserFavorite = typeof userFavorite.$inferSelect;
+
+// Product Kits - predefined bundles of products for quick ordering
+export const productKit = pgTable('product_kit', {
+	id: text('id').primaryKey(),
+	projectId: text('project_id')
+		.references(() => project.id, { onDelete: 'cascade' })
+		.notNull(),
+	name: text('name').notNull(),
+	description: text('description'),
+	icon: text('icon').default('📦'), // Emoji icon for visual display
+	isActive: boolean('is_active').default(true).notNull(),
+	createdBy: text('created_by').references(() => user.id),
+	createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull()
+});
+
+export type ProductKit = typeof productKit.$inferSelect;
+
+// Kit Items - products included in a kit with default quantities
+export const productKitItem = pgTable(
+	'product_kit_item',
+	{
+		kitId: text('kit_id')
+			.references(() => productKit.id, { onDelete: 'cascade' })
+			.notNull(),
+		productId: text('product_id')
+			.references(() => product.id, { onDelete: 'cascade' })
+			.notNull(),
+		quantity: integer('quantity').default(1).notNull()
+	},
+	(table) => [primaryKey({ columns: [table.kitId, table.productId] })]
+);
+
+export type ProductKitItem = typeof productKitItem.$inferSelect;
