@@ -43,10 +43,12 @@ export const load: PageServerLoad = async ({ url, parent }) => {
 
 export const actions: Actions = {
 	deleteAll: async () => {
-		// Delete all product-construction type associations first
+		// Delete all dependent records first (foreign key constraints)
 		await db.delete(table.productConstructionType);
-		// Delete all project-product associations
 		await db.delete(table.projectProduct);
+		await db.delete(table.productKitItem);
+		// Set orderItem productId to null (they reference products but can be null for PunchOut)
+		await db.update(table.orderItem).set({ productId: null });
 		// Delete all products
 		await db.delete(table.product);
 

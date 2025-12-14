@@ -217,36 +217,22 @@ Return ONLY valid JSON, no other text.`;
 	};
 }
 
-// Batch classify multiple products in a single API call
-export async function classifyProductsBatch(
-	products: Array<{ id: string; name: string; description: string | null }>,
+// Process a single batch of products
+async function processBatch(
+	batch: Array<{ id: string; name: string; description: string | null }>,
+	anthropic: Anthropic,
+	categoryTree: string,
+	constructionTypeList: string,
 	categories: CategoryInfo[],
 	constructionTypes: ConstructionTypeInfo[]
 ): Promise<Map<string, ClassificationResult>> {
 	const results = new Map<string, ClassificationResult>();
 
-	if (products.length === 0) return results;
+	const productList = batch
+		.map((p, idx) => `${idx + 1}. ID: "${p.id}" | Name: "${p.name}" | Description: "${p.description || 'None'}"`)
+		.join('\n');
 
-	const apiKey = env.ANTHROPIC_API_KEY;
-	if (!apiKey) {
-		throw new Error('ANTHROPIC_API_KEY is not set');
-	}
-
-	const anthropic = new Anthropic({ apiKey });
-	const categoryTree = buildCategoryTree(categories);
-	const constructionTypeList = constructionTypes.map((ct) => ct.name).join(', ');
-
-	// Process in batches of 20 products per API call
-	const BATCH_SIZE = 20;
-
-	for (let i = 0; i < products.length; i += BATCH_SIZE) {
-		const batch = products.slice(i, i + BATCH_SIZE);
-
-		const productList = batch
-			.map((p, idx) => `${idx + 1}. ID: "${p.id}" | Name: "${p.name}" | Description: "${p.description || 'None'}"`)
-			.join('\n');
-
-		const prompt = `You are a construction materials classification expert. Classify ALL the following products into appropriate categories.
+	const prompt = `You are a construction materials classification expert. Classify ALL the following products into appropriate categories.
 
 Products to classify:
 ${productList}
@@ -278,75 +264,137 @@ Rules:
 
 Return ONLY valid JSON array, no other text.`;
 
-		try {
-			const response = await anthropic.messages.create({
-				model: 'claude-haiku-4-5-20251001',
-				max_tokens: 4000,
-				messages: [{ role: 'user', content: prompt }]
+	try {
+		const response = await anthropic.messages.create({
+			model: 'claude-haiku-4-5-20251001',
+			max_tokens: 4000,
+			messages: [{ role: 'user', content: prompt }]
+		});
+
+		const content = response.content[0];
+		if (content.type !== 'text') {
+			throw new Error('Unexpected response type');
+		}
+
+		let jsonText = content.text.trim();
+		if (jsonText.startsWith('```')) {
+			jsonText = jsonText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+		}
+
+		const parsed: Array<{
+			id: string;
+			category?: string;
+			categoryConfidence?: number;
+			subcategory?: string | null;
+			subcategoryConfidence?: number;
+			constructionTypes?: string[];
+			hazardous?: boolean;
+			consumableType?: 'single-use' | 'reusable' | null;
+		}> = JSON.parse(jsonText);
+
+		// Log if AI didn't return all products
+		if (parsed.length !== batch.length) {
+			console.warn(`AI returned ${parsed.length} products but batch had ${batch.length}`);
+		}
+
+		// Map results back to product IDs
+		for (const item of parsed) {
+			const mainCategory = findCategoryByName(item.category || null, categories);
+			const subcategory = findCategoryByName(item.subcategory || null, categories);
+
+			// Log category matching issues
+			if (item.category && !mainCategory) {
+				console.warn(`Category "${item.category}" not found in database for product ${item.id}`);
+			}
+
+			const mappedConstructionTypes = (item.constructionTypes || [])
+				.map((ctName) => {
+					const ct = findConstructionTypeByName(ctName, constructionTypes);
+					return ct ? { id: ct.id, name: ct.name, confidence: 0.8 } : null;
+				})
+				.filter((ct): ct is { id: string; name: string; confidence: number } => ct !== null);
+
+			results.set(item.id, {
+				categoryId: mainCategory?.id || null,
+				categoryName: mainCategory?.name || null,
+				categoryConfidence: item.categoryConfidence || 0,
+				subcategoryId: subcategory?.id || null,
+				subcategoryName: subcategory?.name || null,
+				subcategoryConfidence: item.subcategoryConfidence || 0,
+				constructionTypes: mappedConstructionTypes,
+				hazardous: item.hazardous || false,
+				consumableType: item.consumableType || null
 			});
+		}
 
-			const content = response.content[0];
-			if (content.type !== 'text') {
-				throw new Error('Unexpected response type');
-			}
+		console.log(`Batch classified ${parsed.length} products`);
+	} catch (error) {
+		console.error('Batch classification failed:', error);
+		// Fall back to setting defaults for this batch
+		for (const product of batch) {
+			results.set(product.id, {
+				categoryId: null,
+				categoryName: null,
+				categoryConfidence: 0,
+				subcategoryId: null,
+				subcategoryName: null,
+				subcategoryConfidence: 0,
+				constructionTypes: [],
+				hazardous: false,
+				consumableType: null
+			});
+		}
+	}
 
-			let jsonText = content.text.trim();
-			if (jsonText.startsWith('```')) {
-				jsonText = jsonText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-			}
+	return results;
+}
 
-			const parsed: Array<{
-				id: string;
-				category?: string;
-				categoryConfidence?: number;
-				subcategory?: string | null;
-				subcategoryConfidence?: number;
-				constructionTypes?: string[];
-				hazardous?: boolean;
-				consumableType?: 'single-use' | 'reusable' | null;
-			}> = JSON.parse(jsonText);
+// Batch classify multiple products with parallel API calls
+export async function classifyProductsBatch(
+	products: Array<{ id: string; name: string; description: string | null }>,
+	categories: CategoryInfo[],
+	constructionTypes: ConstructionTypeInfo[]
+): Promise<Map<string, ClassificationResult>> {
+	const results = new Map<string, ClassificationResult>();
 
-			// Map results back to product IDs
-			for (const item of parsed) {
-				const mainCategory = findCategoryByName(item.category || null, categories);
-				const subcategory = findCategoryByName(item.subcategory || null, categories);
+	if (products.length === 0) return results;
 
-				const mappedConstructionTypes = (item.constructionTypes || [])
-					.map((ctName) => {
-						const ct = findConstructionTypeByName(ctName, constructionTypes);
-						return ct ? { id: ct.id, name: ct.name, confidence: 0.8 } : null;
-					})
-					.filter((ct): ct is { id: string; name: string; confidence: number } => ct !== null);
+	const apiKey = env.ANTHROPIC_API_KEY;
+	if (!apiKey) {
+		throw new Error('ANTHROPIC_API_KEY is not set');
+	}
 
-				results.set(item.id, {
-					categoryId: mainCategory?.id || null,
-					categoryName: mainCategory?.name || null,
-					categoryConfidence: item.categoryConfidence || 0,
-					subcategoryId: subcategory?.id || null,
-					subcategoryName: subcategory?.name || null,
-					subcategoryConfidence: item.subcategoryConfidence || 0,
-					constructionTypes: mappedConstructionTypes,
-					hazardous: item.hazardous || false,
-					consumableType: item.consumableType || null
-				});
-			}
+	const anthropic = new Anthropic({ apiKey });
+	const categoryTree = buildCategoryTree(categories);
+	const constructionTypeList = constructionTypes.map((ct) => ct.name).join(', ');
 
-			console.log(`Batch classified ${parsed.length} products in one API call`);
-		} catch (error) {
-			console.error('Batch classification failed:', error);
-			// Fall back to setting defaults for this batch
-			for (const product of batch) {
-				results.set(product.id, {
-					categoryId: null,
-					categoryName: null,
-					categoryConfidence: 0,
-					subcategoryId: null,
-					subcategoryName: null,
-					subcategoryConfidence: 0,
-					constructionTypes: [],
-					hazardous: false,
-					consumableType: null
-				});
+	// Process in batches of 25 products per API call
+	const BATCH_SIZE = 25;
+	// Run up to 3 API calls in parallel
+	const PARALLEL_REQUESTS = 3;
+
+	// Split products into batches
+	const batches: Array<Array<{ id: string; name: string; description: string | null }>> = [];
+	for (let i = 0; i < products.length; i += BATCH_SIZE) {
+		batches.push(products.slice(i, i + BATCH_SIZE));
+	}
+
+	console.log(`Processing ${products.length} products in ${batches.length} batches (${PARALLEL_REQUESTS} parallel)`);
+
+	// Process batches in parallel groups
+	for (let i = 0; i < batches.length; i += PARALLEL_REQUESTS) {
+		const parallelBatches = batches.slice(i, i + PARALLEL_REQUESTS);
+
+		const batchResults = await Promise.all(
+			parallelBatches.map((batch) =>
+				processBatch(batch, anthropic, categoryTree, constructionTypeList, categories, constructionTypes)
+			)
+		);
+
+		// Merge results
+		for (const batchResult of batchResults) {
+			for (const [key, value] of batchResult) {
+				results.set(key, value);
 			}
 		}
 	}

@@ -5,7 +5,7 @@ import { db } from '$lib/server/db';
 import * as table from '$lib/server/db/schema';
 import type { Actions, PageServerLoad } from './$types';
 import * as XLSX from 'xlsx';
-import { mapCsvColumns, classifyProduct, classifyProductsBatch, extractProductsFromPdf } from '$lib/server/ai';
+import { mapCsvColumns, classifyProductsBatch, extractProductsFromPdf } from '$lib/server/ai';
 import type { ColumnMapping, ExtractedProduct } from '$lib/server/ai';
 
 export const load: PageServerLoad = async ({ url, locals }) => {
@@ -35,7 +35,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 };
 
 export const actions: Actions = {
-	preview: async ({ request }) => {
+	// Step 1: Parse file and return all data (no re-upload needed)
+	parse: async ({ request }) => {
 		const formData = await request.formData();
 		const file = formData.get('file') as File;
 		const supplierId = formData.get('supplierId') as string;
@@ -78,26 +79,24 @@ export const actions: Actions = {
 			const workbook = XLSX.read(buffer, { type: 'array', codepage: 65001 });
 			const sheetName = workbook.SheetNames[0];
 			const sheet = workbook.Sheets[sheetName];
-			const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+			const allData = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
 
-			if (data.length === 0) {
+			if (allData.length === 0) {
 				return fail(400, { message: 'The file appears to be empty' });
 			}
 
 			// Get column headers
-			const headers = Object.keys(data[0]);
+			const headers = Object.keys(allData[0]);
 
-			// Preview first 10 rows
-			const preview = data.slice(0, 10);
+			// Preview first 5 rows
+			const preview = allData.slice(0, 5);
 
 			// Get AI suggested mappings
 			let suggestedMappings: ColumnMapping[] = [];
-			let unmappedColumns: string[] = headers;
 
 			try {
 				const aiMappings = await mapCsvColumns(headers, preview as Record<string, unknown>[]);
 				suggestedMappings = aiMappings.mappings;
-				unmappedColumns = aiMappings.unmappedColumns;
 			} catch (err) {
 				console.error('AI mapping failed:', err);
 				// Continue without AI suggestions
@@ -108,10 +107,11 @@ export const actions: Actions = {
 				isPdf: false,
 				headers,
 				preview,
-				totalRows: data.length,
+				// Store ALL data so we don't need to re-upload
+				allData,
+				totalRows: allData.length,
 				supplierId,
-				suggestedMappings,
-				unmappedColumns
+				suggestedMappings
 			};
 		} catch (err) {
 			console.error('Error parsing file:', err);
@@ -123,9 +123,10 @@ export const actions: Actions = {
 		}
 	},
 
+	// Step 2: Import from stored data (no file needed)
 	import: async ({ request }) => {
 		const formData = await request.formData();
-		const file = formData.get('file') as File;
+		const dataJson = formData.get('data') as string;
 		const supplierId = formData.get('supplierId') as string;
 		const skuColumn = formData.get('skuColumn') as string;
 		const nameColumn = formData.get('nameColumn') as string;
@@ -142,18 +143,18 @@ export const actions: Actions = {
 		const minOrderQtyColumn = formData.get('minOrderQtyColumn') as string;
 		const supplierSkuColumn = formData.get('supplierSkuColumn') as string;
 
-		if (!file || !supplierId || !skuColumn || !nameColumn || !priceColumn) {
+		if (!dataJson || !supplierId || !skuColumn || !nameColumn || !priceColumn) {
 			return fail(400, { message: 'Missing required fields' });
 		}
 
+		let data: Record<string, unknown>[];
 		try {
-			const buffer = await file.arrayBuffer();
-			// codepage 65001 = UTF-8 encoding for proper umlaut handling in CSV
-			const workbook = XLSX.read(buffer, { type: 'array', codepage: 65001 });
-			const sheetName = workbook.SheetNames[0];
-			const sheet = workbook.Sheets[sheetName];
-			const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+			data = JSON.parse(dataJson);
+		} catch {
+			return fail(400, { message: 'Invalid data format' });
+		}
 
+		try {
 			let imported = 0;
 			let skipped = 0;
 			const importedProductIds: string[] = [];
@@ -261,6 +262,7 @@ export const actions: Actions = {
 		}
 	},
 
+	// Batch AI classification
 	classifyBatch: async ({ request }) => {
 		const formData = await request.formData();
 		const productIdsJson = formData.get('productIds') as string;
@@ -291,7 +293,7 @@ export const actions: Actions = {
 			.where(
 				productIds.length === 1
 					? eq(table.product.id, productIds[0])
-					: undefined // Will filter below for multiple IDs
+					: undefined
 			);
 
 		// Filter to only requested IDs
@@ -303,26 +305,27 @@ export const actions: Actions = {
 		}
 
 		try {
-			// Use batch classification - single API call for up to 20 products
 			const classifications = await classifyProductsBatch(
 				filteredProducts,
 				categories,
 				constructionTypes
 			);
 
-			let classified = 0;
-			const results: Array<{ productId: string; success: boolean; error?: string }> = [];
+			// Log any products that didn't get classified
+			const missingClassifications = filteredProducts.filter(p => !classifications.has(p.id));
+			if (missingClassifications.length > 0) {
+				console.warn(`${missingClassifications.length} products missing from classification results:`,
+					missingClassifications.map(p => ({ id: p.id, name: p.name })).slice(0, 5)
+				);
+			}
 
-			// Update products with classifications
-			for (const product of filteredProducts) {
+			// Prepare all updates in parallel
+			const updatePromises = filteredProducts.map(async (product) => {
 				const classification = classifications.get(product.id);
-				if (!classification) {
-					results.push({ productId: product.id, success: false, error: 'Classification not found' });
-					continue;
-				}
+				if (!classification) return false;
 
 				try {
-					// Update product with classification
+					// Update product
 					await db
 						.update(table.product)
 						.set({
@@ -333,34 +336,35 @@ export const actions: Actions = {
 						})
 						.where(eq(table.product.id, product.id));
 
-					// Insert construction type associations
-					for (const ct of classification.constructionTypes) {
-						await db
-							.insert(table.productConstructionType)
-							.values({
-								productId: product.id,
-								constructionTypeId: ct.id
-							})
-							.onConflictDoNothing();
+					// Insert construction types in parallel
+					if (classification.constructionTypes.length > 0) {
+						await Promise.all(
+							classification.constructionTypes.map((ct) =>
+								db
+									.insert(table.productConstructionType)
+									.values({
+										productId: product.id,
+										constructionTypeId: ct.id
+									})
+									.onConflictDoNothing()
+							)
+						);
 					}
 
-					results.push({ productId: product.id, success: true });
-					classified++;
+					return true;
 				} catch (err) {
 					console.error(`Error updating product ${product.id}:`, err);
-					results.push({
-						productId: product.id,
-						success: false,
-						error: err instanceof Error ? err.message : 'Unknown error'
-					});
+					return false;
 				}
-			}
+			});
+
+			const results = await Promise.all(updatePromises);
+			const classified = results.filter(Boolean).length;
 
 			return {
 				success: true,
 				classified,
-				total: productIds.length,
-				results
+				total: productIds.length
 			};
 		} catch (err) {
 			console.error('Batch classification error:', err);
@@ -368,6 +372,7 @@ export const actions: Actions = {
 		}
 	},
 
+	// Import from PDF extraction
 	importPdf: async ({ request }) => {
 		const formData = await request.formData();
 		const productsJson = formData.get('products') as string;
@@ -401,7 +406,7 @@ export const actions: Actions = {
 					name: product.name,
 					description: product.description || null,
 					unit: product.unit || 'pcs',
-					pricePerUnit: product.pricePerUnit, // Already in cents from extraction
+					pricePerUnit: product.pricePerUnit,
 					manufacturer: null,
 					packagingUnit: null,
 					hazardous: false,
